@@ -1,0 +1,6 @@
+*.json
+*.dll
+*.exe
+*.obj
+*.ilk
+*.pdb
