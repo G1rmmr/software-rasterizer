@@ -538,14 +538,6 @@ namespace math{
             return result;
         }
 
-        Quaternion FromAxisAngle(const Vector3& axis, const float radian) const noexcept {
-            Quaternion result(
-                axis.Norm() * std::sin(radian * 0.5f),
-                std::cos(radian * 0.5f));
-
-            return result;
-        }
-
         Quaternion Slerp(const Quaternion& other, const float t) const noexcept {
             float cosHalfTheta = simd::GetFirst(simd::HorizonSum(Q, other.Q, 0x71));
 
@@ -583,5 +575,13 @@ namespace math{
         }
 
         return Vector3(res);
+    }
+
+    inline Quaternion FromAxisAngle(const Vector3& axis, const float radian) const noexcept {
+        Quaternion result(
+            axis.Norm() * std::sin(radian * 0.5f),
+            std::cos(radian * 0.5f));
+
+        return result;
     }
 }
