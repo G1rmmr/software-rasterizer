@@ -8,21 +8,62 @@
 namespace graphics{
     class FrameBuffer{
     public:
-        inline FrameBuffer(const std::uint32_t width, const std::uint32_t height)
+        FrameBuffer(const std::uint32_t width, const std::uint32_t height)
             : colorBuffer(width * height, 0)
             , depthBuffer(width * height, 1.0f)
             , width(width)
             , height(height){}
 
-        inline void Clear(const std::uint32_t clearColor = 0) {
+        ~FrameBuffer() = default;
+
+        FrameBuffer(const FrameBuffer& other) noexcept
+            : colorBuffer(other.colorBuffer)
+            , depthBuffer(other.depthBuffer)
+            , width(other.width)
+            , height(other.height){}
+
+        FrameBuffer(FrameBuffer&& other) noexcept
+            : colorBuffer(other.colorBuffer)
+            , depthBuffer(other.depthBuffer)
+            , width(other.width)
+            , height(other.height){}
+
+        FrameBuffer& operator=(const FrameBuffer& other) noexcept {
+            if(this != &other){
+                colorBuffer = other.colorBuffer;
+                depthBuffer = other.depthBuffer;
+                width = other.width;
+                height = other.height;
+            }
+            return *this;
+        }
+
+        FrameBuffer& operator=(FrameBuffer&& other) noexcept{
+            if(this != &other){
+                colorBuffer = other.colorBuffer;
+                depthBuffer = other.depthBuffer;
+                width = other.width;
+                height = other.height;
+            }
+            return *this;
+        }
+
+        inline void Clear(const std::uint32_t clearColor = 0) noexcept {
             std::fill(colorBuffer.begin(), colorBuffer.end(), clearColor);
             std::fill(depthBuffer.begin(), depthBuffer.end(), 1.0f);
         }
 
         inline void SetPixel(
-            const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) {
+            const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) noexcept {
             if(x < width && y < height)
                 colorBuffer[y * width + x] = color;
+        }
+
+        inline void Swap(FrameBuffer& other) noexcept {
+            colorBuffer.swap(other.colorBuffer);
+            depthBuffer.swap(other.depthBuffer);
+            std::swap(width, other.width);
+            std::swap(height, other.height);
         }
 
     private:
@@ -30,6 +71,11 @@ namespace graphics{
         std::vector<float> depthBuffer;
         std::uint32_t width;
         std::uint32_t height;
+    };
+
+    struct Vertex{
+        math::Vector3 Pos;
+        math::Vectro3 Color;
     };
 
     inline math::Matrix4 CreatePerspective(
@@ -46,6 +92,7 @@ namespace graphics{
         mat[2][2] = a;
         mat[2][3] = -near * a;
         mat[3][2] = 1.f;
+        mat[3][3] = 0.f;
 	    return mat;
     }
 

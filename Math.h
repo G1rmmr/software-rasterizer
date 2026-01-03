@@ -99,7 +99,11 @@ namespace math{
             return simd::GetFirst(temp);
         }
 
-        Vector3& Cross(const Vector3& other) const noexcept {
+        float Cross2D(const Vector3& other) const noexcept {
+            return X * other.Y - Y * other.X;
+        }
+
+        Vector3 Cross(const Vector3& other) const noexcept {
             const std::uint8_t leftMask = _MM_SHUFFLE(3, 0, 2, 1);
             const std::uint8_t rightMask = _MM_SHUFFLE(3, 1, 0, 2);
 
@@ -583,5 +587,18 @@ namespace math{
             std::cos(radian * 0.5f));
 
         return result;
+    }
+
+    inline Vector3 GetBarycentric(
+        const Vector3& pos, const Vector3& a, const Vector3& b, const Vector3& c) noexcept {
+        float area = (b - a).Cross2D(c - a);
+
+        if (std::abs(area) < 1e-6f) return Vector3(-1.f, -1.f, -1.f, 0.f);
+
+        float wA = (b - pos).Cross2D(c - p) / area;
+        float wB = (c - p).Cross2D(a - p) / area;
+        float wC = 1.f - wA - wB;
+
+        return Vector3(wA, wB, wC, 0.f);
     }
 }
