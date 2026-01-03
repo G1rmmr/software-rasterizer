@@ -1,9 +1,9 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <xmmintrin.h>
 
-namespace simd{
+namespace simd {
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
@@ -15,13 +15,13 @@ namespace simd{
 #include <arm_neon.h>
 #define ENGINE_SIMD_NEON
 
-    typedef float32x4_t SimdFloat;
+    typedef float32x4_t Floats;
 
 #else
-#error "지원하지 않는 아키텍처입니다."
+#error "UNDEFINED ARCHITEXTURE"
 #endif
 
-// Arithmetics
+    // Arithmetics
     inline Floats Add(const Floats& lhs, const Floats& rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_add_ps(lhs, rhs);
@@ -64,14 +64,14 @@ namespace simd{
 #endif
     }
 
-    inline Floats HorizonSum(const Floats& lhs, const Floats& rhs, const std::uint8_t mask) noexcept {
+    template <std::uint8_t MASK> inline Floats HorizonSum(const Floats& lhs, const Floats& rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
-        return _mm_dp_ps(lhs, rhs, mask);
+        return _mm_dp_ps(lhs, rhs, MASK);
 #elif defined(ENGINE_SIMD_NEON)
 #endif
     }
 
-    inline float GetFirst(const Floats& val){
+    inline float GetFirst(const Floats& val) {
 #ifdef ENGINE_SIMD_SSE
         return _mm_cvtss_f32(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -92,7 +92,7 @@ namespace simd{
 #endif
     }
 
-// Logicals
+    // Logicals
     inline Floats Reset() noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_setzero_ps();
@@ -114,16 +114,16 @@ namespace simd{
 #endif
     }
 
-    inline Floats Shuffle(const Floats& lhs, const Floats& rhs, const ::std::uint8_t mask) noexcept {
+    template <std::uint8_t MASK> inline Floats Shuffle(const Floats& lhs, const Floats& rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
-        return _mm_shuffle_ps(lhs, rhs, mask);
+        return _mm_shuffle_ps(lhs, rhs, MASK);
 #elif defined(ENGINE_SIMD_NEON)
 #endif
     }
 
-    inline Floats Swizzle(const Floats& v, const ::std::uint8_t mask) noexcept {
+    template <std::uint8_t MASK> inline Floats Swizzle(const Floats& v) noexcept {
 #ifdef ENGINE_SIMD_SSE
-        return _mm_castsi128_ps(_mm_shuffle_epi32(_mm_castps_si128(v), mask));
+        return _mm_castsi128_ps(_mm_shuffle_epi32(_mm_castps_si128(v), MASK));
 #elif defined(ENGINE_SIMD_NEON)
 #endif
     }
