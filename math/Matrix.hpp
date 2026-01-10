@@ -212,7 +212,6 @@ namespace math {
             detM = simd::Sub(detM, tr);
 
             const simd::Floats adjSign = simd::Set(1.f, -1.f, -1.f, 1.f);
-            const simd::Floats rec = simd::Reciprocal(detM);
             const simd::Floats recDetM = simd::Mul(adjSign, detM);
 
             x = simd::Mul(x, recDetM);

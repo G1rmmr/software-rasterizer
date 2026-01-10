@@ -76,4 +76,3 @@ PackConstructorInitializers: NextLine
 SortUsingDeclarations: true
 Language: Cpp
 Standard: c++20
----

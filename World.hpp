@@ -37,9 +37,47 @@ namespace world {
         math::Vector target(0.f, 0.f, 0.f);
         math::Matrix view = math::CreateLookAt({0.f, 0.f, 5.f}, target, {0.f, 1.f, 0.f});
 
-        float aspect = static_cast<float>(WIDTH) / HEIGHT;
+        constexpr float aspect = static_cast<float>(WIDTH) / HEIGHT;
         math::Matrix proj = math::CreatePerspective(math::ToRadian(45.f), aspect, 0.1f, 100.f);
 
         return proj * view * model;
+    }
+
+    inline void CreateSphere(
+        const float radius,
+        const std::uint32_t sectors,
+        const std::uint32_t stacks) {
+
+        ModelVertices.clear();
+        ModelIndices.clear();
+
+        for (std::uint32_t i = 0; i <= stacks; ++i) {
+            float phi = std::numbers::pi_v<float> * static_cast<float>(i) / stacks;
+
+            for (std::uint32_t j = 0; j <= sectors; ++j) {
+                float theta = 2.f * std::numbers::pi_v<float> * static_cast<float>(j) / sectors;
+                
+                float x = radius * std::sin(phi) * std::cos(theta);
+                float y = radius * std::cos(phi);
+                float z = radius * std::sin(phi) * std::sin(theta);
+                
+                ModelVertices.push_back({{x, y, z}, {1.f, 1.f, 1.f}});
+            }
+        }
+
+        for (std::uint32_t i = 0; i < stacks; ++i) {
+            for (std::uint32_t j = 0; j < sectors; ++j) {
+                std::uint32_t first = i * (sectors + 1) + j;
+                std::uint32_t second = first + sectors + 1;
+
+                ModelIndices.push_back(first);
+                ModelIndices.push_back(second);
+                ModelIndices.push_back(first + 1);
+
+                ModelIndices.push_back(second);
+                ModelIndices.push_back(second + 1);
+                ModelIndices.push_back(first + 1);
+            }
+        }
     }
 }
