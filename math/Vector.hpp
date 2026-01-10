@@ -101,8 +101,8 @@ namespace math {
         float Cross2D(const Vector& other) const noexcept { return X * other.Y - Y * other.X; }
 
         Vector Cross(const Vector& other) const noexcept {
-            const std::uint8_t leftMask = _MM_SHUFFLE(3, 0, 2, 1);
-            const std::uint8_t rightMask = _MM_SHUFFLE(3, 1, 0, 2);
+            const std::uint8_t leftMask = SIMD_MASK(3, 0, 2, 1);
+            const std::uint8_t rightMask = SIMD_MASK(3, 1, 0, 2);
 
             Vector left{simd::Mul(simd::Shuffle<leftMask>(V, V), simd::Shuffle<rightMask>(other.V, other.V))};
             Vector right{simd::Mul(simd::Shuffle<rightMask>(V, V), simd::Shuffle<leftMask>(other.V, other.V))};

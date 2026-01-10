@@ -1,8 +1,0 @@
--xc++
--std=c++20
--isysroot
-/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
--I/usr/local/include
--I/Library/Developer/CommandLineTools/usr/include/c++/v1
--D__APPLE__
--DGL_SILENCE_DEPRECATION

@@ -1,51 +1,25 @@
-﻿#include <GLFW/glfw3.h>
-
-#ifdef __APPLE__
-#include <OpenGL/gl.h>
-#else
-#include <GL/gl.h>
-#endif
-
-#include <cstdint>
+#include <MiniFB.h>
 #include <cstdio>
+#include <vector>
 
 #include "World.hpp"
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Rasterizer.hpp"
 
-void ErrCallback(int error, const char* description) {
-    std::fprintf(stderr, "ERROR : %s\n", description);
-}
-
 int main() {
-    glfwSetErrorCallback(ErrCallback);
+    const char* WINDOW_TITLE = "Software Rasterizer (NEON/Minifb)";
 
-    const char* WINDOW_TITLE = "Software Rasterizer";
-
-    if(!glfwInit()) return -1;
-
-    GLFWwindow* window = glfwCreateWindow(world::WIDTH, world::HEIGHT, WINDOW_TITLE, nullptr, nullptr);
-    if(!window) {
-        glfwTerminate();
+    struct mfb_window *window = mfb_open_ex(WINDOW_TITLE, world::WIDTH, world::HEIGHT, WF_RESIZABLE);
+    if (!window) {
+        std::fprintf(stderr, "ERROR: Could not open minifb window\n");
         return -1;
     }
-
-    glfwMakeContextCurrent(window);
 
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
     float angle = 0.f;
 
-    // world::CreateSphere(10, 20, 20);
-
-    while(!glfwWindowShouldClose(window)) {
+    do {
         frame.Clear(world::COLOR);
-
-        int fbW = 0, fbH = 0;
-        int winW = 0, winH = 0;
-        glfwGetFramebufferSize(window, &fbW, &fbH);
-        glfwGetWindowSize(window, &winW, &winH);
-
-        glViewport(0, 0, fbW, fbH);
 
         angle += 0.02f;
         shader::Default shader{
@@ -55,18 +29,13 @@ int main() {
 
         graphics::Render(frame, shader, world::ModelVertices, world::ModelIndices);
 
-        float scaleX = static_cast<float>(fbW) / world::WIDTH;
-        float scaleY = static_cast<float>(fbH) / world::HEIGHT;
+        int state = mfb_update(window, frame.GetColor());
+        if (state < 0) {
+            window = nullptr;
+            break;
+        }
 
-        glRasterPos2f(-1.f, 1.f);
-        glPixelZoom(scaleX, -scaleY);
+    } while (mfb_wait_sync(window));
 
-        glDrawPixels(world::WIDTH, world::HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, frame.GetColor());
-
-        glfwSwapBuffers(window);
-        glfwPollEvents();
-    }
-
-    glfwTerminate();
     return 0;
 }

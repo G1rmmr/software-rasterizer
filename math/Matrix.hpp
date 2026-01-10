@@ -183,17 +183,17 @@ namespace math {
             simd::Floats c = simd::PackLowHigh(Cols[2], Cols[3]);
             simd::Floats d = simd::PackHighLow(Cols[2], Cols[3]);
 
-            const std::uint8_t leftMask = _MM_SHUFFLE(2, 0, 2, 0);
-            const std::uint8_t rightMask = _MM_SHUFFLE(3, 1, 3, 1);
+            const std::uint8_t leftMask = SIMD_MASK(2, 0, 2, 0);
+            const std::uint8_t rightMask = SIMD_MASK(3, 1, 3, 1);
 
             simd::Floats detSub = simd::Sub(
                 simd::Mul(simd::Shuffle<leftMask>(Cols[0], Cols[2]), simd::Shuffle<rightMask>(Cols[1], Cols[3])),
                 simd::Mul(simd::Shuffle<rightMask>(Cols[0], Cols[2]), simd::Shuffle<leftMask>(Cols[1], Cols[3])));
 
-            simd::Floats detA = simd::Swizzle<_MM_SHUFFLE(0, 0, 0, 0)>(detSub);
-            simd::Floats detB = simd::Swizzle<_MM_SHUFFLE(1, 1, 1, 1)>(detSub);
-            simd::Floats detC = simd::Swizzle<_MM_SHUFFLE(2, 2, 2, 2)>(detSub);
-            simd::Floats detD = simd::Swizzle<_MM_SHUFFLE(3, 3, 3, 3)>(detSub);
+            simd::Floats detA = simd::Swizzle<SIMD_MASK(0, 0, 0, 0)>(detSub);
+            simd::Floats detB = simd::Swizzle<SIMD_MASK(1, 1, 1, 1)>(detSub);
+            simd::Floats detC = simd::Swizzle<SIMD_MASK(2, 2, 2, 2)>(detSub);
+            simd::Floats detD = simd::Swizzle<SIMD_MASK(3, 3, 3, 3)>(detSub);
 
             simd::Floats dc = adjMul2(d, c);
             simd::Floats ab = adjMul2(a, b);
@@ -206,7 +206,7 @@ namespace math {
             simd::Floats z = simd::Sub(simd::Mul(detC, b), mulAdj2(a, dc));
             detM = simd::Add(detM, simd::Mul(detB, detC));
 
-            simd::Floats tr = simd::Mul(ab, simd::Swizzle<_MM_SHUFFLE(0, 2, 1, 3)>(dc));
+            simd::Floats tr = simd::Mul(ab, simd::Swizzle<SIMD_MASK(0, 2, 1, 3)>(dc));
             tr = simd::HorizonSum<0xFF>(tr, tr);
 
             detM = simd::Sub(detM, tr);
@@ -232,20 +232,20 @@ namespace math {
     private:
         simd::Floats mul2(const simd::Floats& v1, const simd::Floats& v2) const noexcept {
             return simd::Add(
-                simd::Mul(v1, simd::Swizzle<_MM_SHUFFLE(0, 3, 0, 3)>(v2)),
-                simd::Mul(simd::Swizzle<_MM_SHUFFLE(1, 0, 3, 2)>(v1), simd::Swizzle<_MM_SHUFFLE(2, 1, 2, 1)>(v2)));
+                simd::Mul(v1, simd::Swizzle<SIMD_MASK(0, 3, 0, 3)>(v2)),
+                simd::Mul(simd::Swizzle<SIMD_MASK(1, 0, 3, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 1, 2, 1)>(v2)));
         }
 
         simd::Floats adjMul2(const simd::Floats& v1, const simd::Floats& v2) const noexcept {
             return simd::Sub(
-                simd::Mul(simd::Swizzle<_MM_SHUFFLE(3, 3, 0, 0)>(v1), v2),
-                simd::Mul(simd::Swizzle<_MM_SHUFFLE(1, 1, 2, 2)>(v1), simd::Swizzle<_MM_SHUFFLE(2, 3, 0, 1)>(v2)));
+                simd::Mul(simd::Swizzle<SIMD_MASK(3, 3, 0, 0)>(v1), v2),
+                simd::Mul(simd::Swizzle<SIMD_MASK(1, 1, 2, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 3, 0, 1)>(v2)));
         }
 
         simd::Floats mulAdj2(const simd::Floats& v1, const simd::Floats& v2) const noexcept {
             return simd::Sub(
-                simd::Mul(v1, simd::Swizzle<_MM_SHUFFLE(3, 0, 3, 0)>(v2)),
-                simd::Mul(simd::Swizzle<_MM_SHUFFLE(1, 0, 3, 2)>(v1), simd::Swizzle<_MM_SHUFFLE(2, 1, 2, 1)>(v2)));
+                simd::Mul(v1, simd::Swizzle<SIMD_MASK(3, 0, 3, 0)>(v2)),
+                simd::Mul(simd::Swizzle<SIMD_MASK(1, 0, 3, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 1, 2, 1)>(v2)));
         }
     };
 }
