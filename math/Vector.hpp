@@ -115,6 +115,10 @@ namespace math {
             return std::sqrt(dot);
         }
 
-        Vector Norm() const noexcept { return *this / Length(); }
+        Vector Norm() const noexcept {
+            const float len = Length();
+            if(len > 1e-6f) return *this / len;
+            return Vector(0.f);
+        }
     };
 }

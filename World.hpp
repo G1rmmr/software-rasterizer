@@ -12,54 +12,81 @@ namespace world {
     constexpr inline std::uint32_t HEIGHT = 450;
     constexpr inline std::uint32_t COLOR = 0xFF333333;
 
+    inline math::Vector LightDir = math::Vector(0.5f, 0.5f, 1.f, 0.f).Norm();
+    inline math::Matrix Model{};
+
     inline std::vector<shader::Vertex> ModelVertices = {
-        {{-1.f, -1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 1.f}},  // 0
-        {{1.f, -1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 1.f}},   // 1
-        {{1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 1.f}},    // 2
-        {{-1.f, 1.f, 1.f, 1.f}, {1.f, 1.f, 0.f, 1.f}},   // 3
-        {{-1.f, -1.f, -1.f, 1.f}, {1.f, 0.f, 1.f, 1.f}}, // 4
-        {{1.f, -1.f, -1.f, 1.f}, {0.f, 1.f, 1.f, 1.f}},  // 5
-        {{1.f, 1.f, -1.f, 1.f}, {1.f, 1.f, 1.f, 1.f}},   // 6
-        {{-1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, 0.f, 1.f}}   // 7
+        // Front face (+Z)
+        {{-1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 0.f, 0.f, 1.f}}, // 0
+        {{1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 1.f, 0.f, 1.f}},  // 1
+        {{1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 1.f, 1.f}},   // 2
+        {{-1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 0.f, 1.f}},  // 3
+
+        // Back face (-Z)
+        {{1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 1.f, 1.f, 1.f}},  // 4
+        {{-1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 0.f, 1.f, 1.f}}, // 5
+        {{-1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}},  // 6
+        {{1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}},   // 7
+
+        // Top face (+Y)
+        {{-1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}},  // 8
+        {{1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}},   // 9
+        {{1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}},  // 10
+        {{-1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}}, // 11
+
+        // Bottom face (-Y)
+        {{-1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}}, // 12
+        {{1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}},  // 13
+        {{1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}},   // 14
+        {{-1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}},  // 15
+
+        // Right face (+X)
+        {{1.f, -1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}},  // 16
+        {{1.f, -1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}}, // 17
+        {{1.f, 1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}},  // 18
+        {{1.f, 1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}},   // 19
+
+        // Left face (-X)
+        {{-1.f, -1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}}, // 20
+        {{-1.f, -1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}},  // 21
+        {{-1.f, 1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}},   // 22
+        {{-1.f, 1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}}   // 23
     };
 
     inline std::vector<std::uint32_t> ModelIndices = {
-        0, 1, 2, 0, 2, 3, // front
-        1, 5, 6, 1, 6, 2, // right
-        5, 4, 7, 5, 7, 6, // rear
-        4, 0, 3, 4, 3, 7, // left
-        3, 2, 6, 3, 6, 7, // top
-        4, 5, 1, 4, 1, 0  // bottom
+        0,  1,  2,  0,  2,  3,  // Front
+        4,  5,  6,  4,  6,  7,  // Back
+        8,  9,  10, 8,  10, 11, // Top
+        12, 13, 14, 12, 14, 15, // Bottom
+        16, 17, 18, 16, 18, 19, // Right
+        20, 21, 22, 20, 22, 23  // Left
     };
 
-    inline math::Matrix GetMVP(const float angle) {
-        math::Matrix model = math::CreateRotation({0.f, 1.f, 0.f}, angle);
-
+    inline math::Matrix GetMVP() {
         math::Vector target(0.f, 0.f, 0.f);
         math::Matrix view = math::CreateLookAt({0.f, 0.f, 5.f}, target, {0.f, 1.f, 0.f});
 
         constexpr float aspect = static_cast<float>(WIDTH) / HEIGHT;
         math::Matrix proj = math::CreatePerspective(math::ToRadian(45.f), aspect, 0.1f, 100.f);
 
-        return proj * view * model;
+        return proj * view * Model;
     }
 
-    inline std::uint32_t GetMidpoint(
-        const float radius,
-        const std::uint32_t p1, 
-        const std::uint32_t p2,
-        std::map<std::uint64_t, std::uint32_t>& cache) {
+    inline std::uint32_t GetMidpoint(const float radius, const std::uint32_t p1, const std::uint32_t p2,
+                                     std::map<std::uint64_t, std::uint32_t>& cache) {
         std::uint64_t key = (static_cast<std::uint64_t>(std::min(p1, p2)) << 32) | std::max(p1, p2);
-        if (cache.contains(key)) return cache[key];
+        if(cache.contains(key)) return cache[key];
 
-        math::Vector v1 = {ModelVertices[p1].Pos.X, ModelVertices[p1].Pos.Y, ModelVertices[p1].Pos.Z};
-        math::Vector v2 = {ModelVertices[p2].Pos.X, ModelVertices[p2].Pos.Y, ModelVertices[p2].Pos.Z};
-        
-        math::Vector middle = (v1 + v2) * 0.5f;
-        const float length = std::sqrt(middle.Dot(middle));
-        middle = (middle / length) * radius;
+        math::Vector middle = (ModelVertices[p1].Pos + ModelVertices[p2].Pos) * 0.5f;
+        const float len = middle.Length();
 
-        ModelVertices.push_back({{middle.X, middle.Y, middle.Z, 1.f}, {1.f, 1.f, 1.f, 1.f}});
+        math::Vector normal = (len > 1e-6f) ? (middle / len) : ModelVertices[p1].Normal;
+        math::Vector pos = normal * radius;
+        pos.W = 1.f;
+        normal.W = 0.f;
+
+        math::Vector color = (ModelVertices[p1].Color + ModelVertices[p2].Color) * 0.5f;
+        ModelVertices.push_back({pos, normal, color});
         return cache[key] = static_cast<std::uint32_t>(ModelVertices.size() - 1);
     }
 
@@ -67,31 +94,33 @@ namespace world {
         ModelVertices.clear();
         ModelIndices.clear();
 
-        const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
-        std::vector<math::Vector> basePos = {
-            {-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0},
-            {0, -1, t}, {0, 1, t}, {0, -1, -t}, {0, 1, -t},
-            {t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1}
-        };
+        const float t = (1.f + std::sqrt(5.f)) / 2.f;
+        std::vector<math::Vector> basePos = {{-1, t, 0},  {1, t, 0},  {-1, -t, 0}, {1, -t, 0}, {0, -1, t},  {0, 1, t},
+                                             {0, -1, -t}, {0, 1, -t}, {t, 0, -1},  {t, 0, 1},  {-t, 0, -1}, {-t, 0, 1}};
 
-        for (auto& p : basePos) {
+        for(auto& p : basePos) {
             float len = std::sqrt(p.Dot(p));
-            math::Vector n = (p / len) * radius;
-            ModelVertices.push_back({{n.X, n.Y, n.Z, 1.f}, {1.f, 1.f, 1.f, 1.f}});
+            math::Vector normal = (p / len);
+            math::Vector pos = normal * radius;
+
+            pos.W = 1.f;
+            normal.W = 0.f;
+
+            math::Vector color = math::CreateRandomVector(0.f, 1.f);
+            color.W = 1.f;
+
+            ModelVertices.push_back({pos, normal, {color.X, color.Y, color.Z, 1.f}});
         }
 
-        std::vector<std::uint32_t> faces = {
-            0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
-            1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
-            3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
-            4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1
-        };
+        std::vector<std::uint32_t> faces = {0, 11, 5,  0, 5,  1, 0, 1, 7, 0, 7,  10, 0, 10, 11, 1, 5, 9, 5, 11,
+                                            4, 11, 10, 2, 10, 7, 6, 7, 1, 8, 3,  9,  4, 3,  4,  2, 3, 2, 6, 3,
+                                            6, 8,  3,  8, 9,  4, 9, 5, 2, 4, 11, 6,  2, 10, 8,  6, 7, 9, 8, 1};
 
         std::map<std::uint64_t, std::uint32_t> midpointCache;
 
-        for (std::uint32_t i = 0; i < subdivisions; ++i) {
+        for(std::uint32_t i = 0; i < subdivisions; ++i) {
             std::vector<std::uint32_t> nextFaces;
-            for (std::size_t j = 0; j < faces.size(); j += 3) {
+            for(std::size_t j = 0; j < faces.size(); j += 3) {
                 std::uint32_t v1 = faces[j];
                 std::uint32_t v2 = faces[j + 1];
                 std::uint32_t v3 = faces[j + 2];

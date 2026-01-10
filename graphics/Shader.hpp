@@ -7,15 +7,22 @@
 namespace shader {
     struct Vertex {
         math::Vector Pos;
+        math::Vector Normal;
         math::Vector Color;
     };
 
     struct Default {
+        math::Matrix Model;
         math::Matrix MVP;
         math::Matrix Viewport;
+        math::Vector LightDir;
 
         inline math::Vector Vertex(const math::Vector& pos) const {
             const math::Vector clipPos = MVP * pos;
+
+            if(clipPos.W < 0.1f) {
+                return math::Vector(-10000.f, -10000.f, 0.f, 1.f);
+            }
 
             const float invW = (std::abs(clipPos.W) > 1e-6f) ? (1.f / clipPos.W) : 1.f;
             const math::Vector ndcPos(clipPos.X * invW, clipPos.Y * invW, clipPos.Z * invW, 1.f);
@@ -23,14 +30,19 @@ namespace shader {
             return Viewport * ndcPos;
         }
 
-        inline std::uint32_t Color(const math::Vector& color) const {
-            auto Byte = [](float v) -> std::uint32_t {
-                if(v <= 0.0f) return 0;
-                if(v >= 1.0f) return 255;
-                return static_cast<std::uint32_t>(v * 255.0f + 0.5f);
-            };
+        inline math::Vector Normal(const math::Vector& normal) const {
+            math::Vector n = Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
+            return n.Norm();
+        }
 
-            return (Byte(color.W) << 24) | (Byte(color.Z) << 16) | (Byte(color.Y) << 8) | Byte(color.X);
+        inline std::uint32_t Color(const math::Vector& color, const math::Vector& normal) const {
+            const float intensity = std::max(normal.Dot(LightDir), 0.1f);
+
+            simd::Floats lDir = simd::Set(intensity, intensity, intensity, 1.f);
+            simd::Floats cFloats = simd::Mul(color.V, lDir);
+
+            cFloats = simd::Mul(cFloats, simd::Set(255.f));
+            return simd::PackRGBA(simd::Clamp(cFloats, simd::Set(0.f), simd::Set(255.f)));
         }
     };
 }

@@ -13,12 +13,12 @@ namespace graphics {
 
     // vertex Shader -> rasterization -> pixel Shader
     template <typename Shader>
-    inline std::vector<shader::Vertex> ProcessVertices(
-        const Shader& shader, const std::vector<shader::Vertex>& vertices) {
+    inline std::vector<shader::Vertex> ProcessVertices(const Shader& shader,
+                                                       const std::vector<shader::Vertex>& vertices) {
         std::vector<shader::Vertex> out(vertices.size());
 
         for(size_t i = 0; i < vertices.size(); ++i) {
-            out[i] = { shader.Vertex(vertices[i].Pos), vertices[i].Color };
+            out[i] = {shader.Vertex(vertices[i].Pos), shader.Normal(vertices[i].Normal), vertices[i].Color};
         }
         return out;
     }
@@ -29,17 +29,13 @@ namespace graphics {
         int y = static_cast<int>(std::round(v.Pos.Y));
 
         if(frame.IsVisible(x, y, v.Pos.Z)) {
-            frame.SetPixel(x, y, shader.Color(v.Color));
+            frame.SetPixel(x, y, shader.Color(v.Color, v.Normal));
         }
     }
 
     // Bresenham's Line Algorithm
     template <typename Shader>
-    inline void DrawLine(
-        FrameBuffer& frame, 
-        const Shader& shader, 
-        const shader::Vertex& v0, 
-        const shader::Vertex& v1) {
+    inline void DrawLine(FrameBuffer& frame, const Shader& shader, const shader::Vertex& v0, const shader::Vertex& v1) {
         int x0 = static_cast<int>(std::round(v0.Pos.X));
         int y0 = static_cast<int>(std::round(v0.Pos.Y));
         int x1 = static_cast<int>(std::round(v1.Pos.X));
@@ -55,14 +51,14 @@ namespace graphics {
         int startX = x0, startY = y0;
 
         while(true) {
-            float t = (totalDist < 1e-6f) ? 0.f : 
-                std::sqrt(std::pow(x0 - startX, 2) + std::pow(y0 - startY, 2)) / totalDist;
+            float t =
+                (totalDist < 1e-6f) ? 0.f : std::sqrt(std::pow(x0 - startX, 2) + std::pow(y0 - startY, 2)) / totalDist;
 
             float z = v0.Pos.Z * (1.f - t) + v1.Pos.Z * t;
             math::Vector color = v0.Color * (1.f - t) + v1.Color * t;
 
             if(frame.IsVisible(x0, y0, z)) {
-                frame.SetPixel(x0, y0, shader.Color(color));
+                frame.SetPixel(x0, y0, shader.Color(color, color));
             }
 
             if(x0 == x1 && y0 == y1) break;
@@ -82,16 +78,16 @@ namespace graphics {
     }
 
     template <typename Shader>
-    inline void DrawTriangle(
-        FrameBuffer& frame, 
-        const Shader& shader, 
-        const shader::Vertex& v0,
-        const shader::Vertex& v1,
-        const shader::Vertex& v2) {
-        if((v1.Pos.X - v0.Pos.X) * (v2.Pos.Y - v0.Pos.Y) - (v1.Pos.Y - v0.Pos.Y) * (v2.Pos.X - v0.Pos.X) > 0.f)
-            return;
+    inline void DrawTriangle(FrameBuffer& frame, const Shader& shader, const shader::Vertex& v0,
+                             const shader::Vertex& v1, const shader::Vertex& v2) {
+        const float area =
+            (v1.Pos.X - v0.Pos.X) * (v2.Pos.Y - v0.Pos.Y) - (v1.Pos.Y - v0.Pos.Y) * (v2.Pos.X - v0.Pos.X);
+
+        if(std::abs(area) < 1e-6f) return;
+        if(area > 0.f) return;
 
         BoundingBox bound = frame.GetBound(v0.Pos, v1.Pos, v2.Pos);
+        if(!bound.ShouldRender) return;
 
         for(int y = bound.MinY; y <= bound.MaxY; ++y) {
             for(int x = bound.MinX; x <= bound.MaxX; ++x) {
@@ -102,10 +98,16 @@ namespace graphics {
 
                 float z = v0.Pos.Z * bary.X + v1.Pos.Z * bary.Y + v2.Pos.Z * bary.Z;
                 if(frame.IsVisible(x, y, z)) {
-                    const math::Vector interpolated
-                        = (v0.Color * bary.X) + (v1.Color * bary.Y) + (v2.Color * bary.Z);
+                    const math::Vector interpolatedColor =
+                        (v0.Color * bary.X) + (v1.Color * bary.Y) + (v2.Color * bary.Z);
 
-                    frame.SetPixel(x, y, shader.Color(interpolated));
+                    math::Vector interpolatedNormal =
+                        (v0.Normal * bary.X) + (v1.Normal * bary.Y) + (v2.Normal * bary.Z);
+
+                    float lenSq = interpolatedNormal.Dot(interpolatedNormal);
+                    if(lenSq > 1e-8f) interpolatedNormal *= (1.f / std::sqrt(lenSq));
+
+                    frame.SetPixel(x, y, shader.Color(interpolatedColor, interpolatedNormal));
                 }
             }
         }
@@ -113,12 +115,9 @@ namespace graphics {
 
     // output merge
     template <typename Shader>
-    inline void DispatchPrimitives(
-        FrameBuffer& frame, const Shader& shader, 
-        const std::vector<shader::Vertex>& screenVertices, 
-        const std::vector<std::uint32_t>& indices,
-        const PrimitiveType type = PrimitiveType::Triangles) {
-
+    inline void
+    DispatchPrimitives(FrameBuffer& frame, const Shader& shader, const std::vector<shader::Vertex>& screenVertices,
+                       const std::vector<std::uint32_t>& indices, const PrimitiveType type = PrimitiveType::Triangles) {
         switch(type) {
         case PrimitiveType::Points:
             for(std::size_t index : indices) {
@@ -132,8 +131,8 @@ namespace graphics {
             for(std::size_t i = 0; i < indices.size(); i += 3) {
                 if(i + 2 >= indices.size()) break;
 
-                if(indices[i] >= screenVertices.size() || indices[i + 1] >= screenVertices.size()
-                    || indices[i + 2] >= screenVertices.size())
+                if(indices[i] >= screenVertices.size() || indices[i + 1] >= screenVertices.size() ||
+                   indices[i + 2] >= screenVertices.size())
                     continue;
 
                 const shader::Vertex& v0 = screenVertices[indices[i]];
@@ -148,8 +147,8 @@ namespace graphics {
 
         default:
             for(std::size_t i = 0; i < indices.size(); i += 3) {
-                if(indices[i] >= screenVertices.size() || indices[i + 1] >= screenVertices.size()
-                    || indices[i + 2] >= screenVertices.size())
+                if(indices[i] >= screenVertices.size() || indices[i + 1] >= screenVertices.size() ||
+                   indices[i + 2] >= screenVertices.size())
                     continue;
 
                 const shader::Vertex& v0 = screenVertices[indices[i]];
@@ -162,27 +161,22 @@ namespace graphics {
     }
 
     template <typename Shader>
-    inline void Render(
-        FrameBuffer& frame, 
-        const Shader& shader, 
-        const std::vector<shader::Vertex>& vertices,
-        const PrimitiveType type = PrimitiveType::Triangles) {
+    inline void Render(FrameBuffer& frame, const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                       const PrimitiveType type = PrimitiveType::Triangles) {
         std::vector<shader::Vertex> screenVertices;
-        
+
         for(const shader::Vertex& vertex : vertices) {
             screenVertices.push_back({shader.Vertex(vertex.Pos), vertex.Color});
         }
 
         switch(type) {
         case PrimitiveType::Points:
-            for(const shader::Vertex& vertex : screenVertices)
-                DrawPoint(frame, shader, vertex);
+            for(const shader::Vertex& vertex : screenVertices) DrawPoint(frame, shader, vertex);
             break;
 
         case PrimitiveType::Lines:
             for(std::size_t i = 0; i < screenVertices.size(); i += 2) {
-                if(i + 1 < screenVertices.size())
-                    DrawLine(frame, shader, screenVertices[i], screenVertices[i + 1]);
+                if(i + 1 < screenVertices.size()) DrawLine(frame, shader, screenVertices[i], screenVertices[i + 1]);
             }
             break;
 
@@ -196,12 +190,8 @@ namespace graphics {
     }
 
     template <typename Shader>
-    inline void Render(
-        FrameBuffer& frame,
-        const Shader& shader,
-        const std::vector<shader::Vertex>& vertices,
-        const std::vector<std::uint32_t>& indices,
-        const PrimitiveType type = PrimitiveType::Triangles) {
+    inline void Render(FrameBuffer& frame, const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                       const std::vector<std::uint32_t>& indices, const PrimitiveType type = PrimitiveType::Triangles) {
         std::vector<shader::Vertex> screenVertices = ProcessVertices<Shader>(shader, vertices);
         DispatchPrimitives<Shader>(frame, shader, screenVertices, indices, type);
     }

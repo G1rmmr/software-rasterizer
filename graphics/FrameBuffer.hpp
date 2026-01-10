@@ -7,10 +7,10 @@
 
 namespace graphics {
     struct BoundingBox {
-        int MinX;
-        int MaxX;
-        int MinY;
-        int MaxY;
+        std::uint32_t MinX;
+        std::uint32_t MaxX;
+        std::uint32_t MinY;
+        std::uint32_t MaxY;
         bool ShouldRender;
     };
 
@@ -53,31 +53,35 @@ namespace graphics {
         }
 
         inline void SetPixel(const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) noexcept {
+            if(x < 0 || x >= width || y < 0 || y >= height) return;
             colors[y * width + x] = color;
         }
 
         inline bool IsVisible(const std::uint32_t x, const std::uint32_t y, const float z) {
-            const std::uint32_t index = y * width + x;
+            if(x < 0 || x >= width || y < 0 || y >= height) return false;
 
+            const std::uint32_t index = y * width + x;
             if(z < depthes[index]) {
                 depthes[index] = z;
                 return true;
             }
-
             return false;
         }
 
         inline BoundingBox GetBound(const math::Vector& v0, const math::Vector& v1, const math::Vector& v2) {
-            if(v0.Z < 0.f || v1.Z < 0.f || v2.Z < 0.f) return {0, 0, 0, 0, false};
+            float minX = std::min({v0.X, v1.X, v2.X});
+            float maxX = std::max({v0.X, v1.X, v2.X});
+            float minY = std::min({v0.Y, v1.Y, v2.Y});
+            float maxY = std::max({v0.Y, v1.Y, v2.Y});
 
-            int minX = std::max({0, static_cast<int>(std::floor(std::min({v0.X, v1.X, v2.X})))});
-            int maxX =
-                std::min({static_cast<int>(width - 1), static_cast<int>(std::ceil(std::max({v0.X, v1.X, v2.X})))});
-            int minY = std::max({0, static_cast<int>(std::floor(std::min({v0.Y, v1.Y, v2.Y})))});
-            int maxY =
-                std::min({static_cast<int>(height - 1), static_cast<int>(std::ceil(std::max({v0.Y, v1.Y, v2.Y})))});
+            int left = std::max(0, static_cast<int>(std::floor(minX)));
+            int right = std::min(static_cast<int>(width) - 1, static_cast<int>(std::ceil(maxX)));
+            int bottom = std::max(0, static_cast<int>(std::floor(minY)));
+            int top = std::min(static_cast<int>(height) - 1, static_cast<int>(std::ceil(maxY)));
 
-            return {minX, maxX, minY, maxY, minX <= maxX && minY <= maxY};
+            return {static_cast<std::uint32_t>(left), static_cast<std::uint32_t>(right),
+                    static_cast<std::uint32_t>(bottom), static_cast<std::uint32_t>(top),
+                    left <= right && bottom <= top};
         }
 
         inline std::uint32_t* GetColor() { return colors.data(); }
