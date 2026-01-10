@@ -47,6 +47,12 @@ namespace graphics {
             return *this;
         }
 
+        inline void SetWidth(const std::uint32_t width) { this->width = width; }
+        inline std::uint32_t GetWidth() const { return width; }
+
+        inline void SetHeight(const std::uint32_t height) { this->height = height; }
+        inline std::uint32_t GetHeight() const { return height; }
+
         inline void Clear(const std::uint32_t clearColor = 0) noexcept {
             std::fill(colors.begin(), colors.end(), clearColor);
             std::fill(depthes.begin(), depthes.end(), 1.f);

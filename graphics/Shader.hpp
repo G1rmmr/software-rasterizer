@@ -11,38 +11,67 @@ namespace shader {
         math::Vector Color;
     };
 
-    struct Default {
-        math::Matrix Model;
-        math::Matrix MVP;
-        math::Matrix Viewport;
+    struct Varyings {
+        math::Vector Pos;
+        math::Vector WorldPos;
+        math::Vector Normal;
+        math::Vector Color;
+        float RecipW;
+    };
+
+    struct Uniforms {
+        math::Vector CameraPos;
         math::Vector LightDir;
+        math::Matrix Model;
+        math::Matrix View;
+        math::Matrix Proj;
+    };
+
+    struct Default {
+        Uniforms Uniform;
 
         inline math::Vector Vertex(const math::Vector& pos) const {
-            const math::Vector clipPos = MVP * pos;
-
-            if(clipPos.W < 0.1f) {
-                return math::Vector(-10000.f, -10000.f, 0.f, 1.f);
-            }
-
-            const float invW = (std::abs(clipPos.W) > 1e-6f) ? (1.f / clipPos.W) : 1.f;
-            const math::Vector ndcPos(clipPos.X * invW, clipPos.Y * invW, clipPos.Z * invW, 1.f);
-
-            return Viewport * ndcPos;
+            return Uniform.Proj * Uniform.View * Uniform.Model * pos;
         }
 
         inline math::Vector Normal(const math::Vector& normal) const {
-            math::Vector n = Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
+            math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
             return n.Norm();
         }
 
-        inline std::uint32_t Color(const math::Vector& color, const math::Vector& normal) const {
-            const float intensity = std::max(normal.Dot(LightDir), 0.1f);
+        inline std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
+                                   const math::Vector& worldPos) const {
+            math::Vector normDir = normal.Norm();
+            math::Vector lightDir = Uniform.LightDir.Norm();
+            math::Vector V = (Uniform.CameraPos - worldPos).Norm();
+            math::Vector half = (lightDir + V).Norm();
 
-            simd::Floats lDir = simd::Set(intensity, intensity, intensity, 1.f);
-            simd::Floats cFloats = simd::Mul(color.V, lDir);
+            const float ambient = 0.1f;
+            const float diffuse = std::max(normDir.Dot(lightDir), 0.0f);
 
-            cFloats = simd::Mul(cFloats, simd::Set(255.f));
-            return simd::PackRGBA(simd::Clamp(cFloats, simd::Set(0.f), simd::Set(255.f)));
+            float spec = 0.f;
+            if(diffuse > 0.f) spec = std::pow(std::max(normDir.Dot(half), 0.f), 64.f);
+
+            const float intensity = ambient + diffuse + spec;
+
+            simd::Floats lightVec = simd::Set(intensity, intensity, intensity, 1.f);
+            simd::Floats out = simd::Mul(color.V, lightVec);
+
+            out = simd::Mul(out, simd::Set(255.f));
+            return simd::PackRGBA(simd::Clamp(out, simd::Set(0.0f), simd::Set(255.0f)));
+        }
+
+        inline Varyings Process(const shader::Vertex& in) const {
+            Varyings out;
+
+            out.Pos = Vertex(in.Pos);
+
+            out.WorldPos = Uniform.Model * in.Pos;
+            out.WorldPos.W = 1.0f;
+
+            out.Normal = Normal(in.Normal);
+            out.Color = in.Color;
+            return out;
         }
     };
 }

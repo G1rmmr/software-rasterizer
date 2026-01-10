@@ -7,6 +7,59 @@
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Rasterizer.hpp"
 
+struct AppState {
+    float Width = static_cast<float>(world::WIDTH);
+    float Height = static_cast<float>(world::HEIGHT);
+
+    float X = 0.f;
+    float Y = 0.f;
+    bool IsLeftDown = false;
+} State;
+
+void MouseButtonCallback(struct mfb_window* window, mfb_mouse_button button, mfb_key_mod mod, bool isPressed) {
+    State.IsLeftDown = button == MOUSE_BTN_1 && isPressed;
+}
+
+void MouseMoveCallback(struct mfb_window* window, int x, int y) {
+    State.X = static_cast<float>(x);
+    State.Y = static_cast<float>(y);
+}
+
+void ResizeCallback(struct mfb_window* window, int width, int height) {
+    State.Width = static_cast<float>(width);
+    State.Height = static_cast<float>(height);
+}
+
+void SetWorldUniform(mfb_window* window) {
+    world::Uniform.CameraPos = world::EYE;
+    world::Uniform.View = math::CreateLookAt(world::Uniform.CameraPos, world::Target, world::UP);
+
+    const std::uint8_t* mouseBtn = mfb_get_mouse_button_buffer(window);
+    if(State.IsLeftDown) {
+        float ndcX = (State.X / State.Width) * 2.f - 1.f;
+        float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
+
+        float distSq = ndcX * ndcX + ndcY * ndcY;
+        float z = std::sqrt(1.f - distSq);
+
+        math::Vector viewLightDir = math::Vector(ndcX, ndcY, z, 0.f);
+        math::Vector worldLightDir;
+
+        worldLightDir.X = world::Uniform.View[0][0] * viewLightDir.X + world::Uniform.View[1][0] * viewLightDir.Y +
+                          world::Uniform.View[2][0] * viewLightDir.Z;
+        worldLightDir.Y = world::Uniform.View[0][1] * viewLightDir.X + world::Uniform.View[1][1] * viewLightDir.Y +
+                          world::Uniform.View[2][1] * viewLightDir.Z;
+        worldLightDir.Z = world::Uniform.View[0][2] * viewLightDir.X + world::Uniform.View[1][2] * viewLightDir.Y +
+                          world::Uniform.View[2][2] * viewLightDir.Z;
+        worldLightDir.W = 0.f;
+
+        world::Uniform.LightDir = worldLightDir.Norm();
+    }
+
+    constexpr float aspect = static_cast<float>(world::WIDTH) / world::HEIGHT;
+    world::Uniform.Proj = math::CreatePerspective(math::ToRadian(world::FOV_ANGLE), aspect, world::NEAR, world::FAR);
+}
+
 int main() {
     const char* WINDOW_TITLE = "Software Rasterizer";
 
@@ -16,9 +69,16 @@ int main() {
         return -1;
     }
 
+    mfb_set_mouse_button_callback(window, MouseButtonCallback);
+    mfb_set_mouse_move_callback(window, MouseMoveCallback);
+    mfb_set_resize_callback(window, ResizeCallback);
+
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
+    graphics::Rasterizer rasterizer(frame);
 
     world::CreateIcoSphere(2.1f, 3);
+
+    world::Uniform.LightDir = math::Vector(0.f, 0.f, 1.f, 0.f).Norm();
 
     float angle = 0.f;
     float trans = 0.f;
@@ -26,12 +86,18 @@ int main() {
 
     do {
         frame.Clear(world::COLOR);
-        world::Model = math::CreateTranslation({0.f, 0.f, trans}) * math::CreateRotation({0.f, 1.f, 0.f}, angle);
 
-        shader::Default shader{world::Model, world::GetMVP(), math::CreateViewport(world::WIDTH, world::HEIGHT),
-                               world::LightDir};
+        world::Uniform.Model =
+            math::CreateTranslation({0.f, 0.f, trans}) * math::CreateRotation({0.f, 1.f, 0.f}, angle);
 
-        graphics::Render(frame, shader, world::ModelVertices, world::ModelIndices, graphics::PrimitiveType::Triangles);
+        world::Target = world::Uniform.Model * math::Vector(0.f, 0.f, 0.f, 1.f);
+
+        SetWorldUniform(window);
+
+        shader::Default shader;
+        shader.Uniform = world::Uniform;
+
+        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, graphics::PrimitiveType::Triangles);
 
         int state = mfb_update(window, frame.GetColor());
         if(state < 0) {
@@ -46,10 +112,9 @@ int main() {
             step = 0.02f;
         }
 
-        if(trans >= 2.f) {
+        if(trans >= 1.f) {
             step = -0.02f;
         }
-
     } while(mfb_wait_sync(window));
 
     return 0;

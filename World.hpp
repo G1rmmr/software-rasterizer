@@ -10,10 +10,17 @@
 namespace world {
     constexpr inline std::uint32_t WIDTH = 800;
     constexpr inline std::uint32_t HEIGHT = 450;
-    constexpr inline std::uint32_t COLOR = 0xFF333333;
+    constexpr inline std::uint32_t COLOR = 0xFF000000;
 
-    inline math::Vector LightDir = math::Vector(0.5f, 0.5f, 1.f, 0.f).Norm();
-    inline math::Matrix Model{};
+    const inline math::Vector UP(0.f, 1.f, 0.f);
+    const inline math::Vector EYE(0.f, 0.f, 5.f);
+
+    constexpr inline float FOV_ANGLE = 45.f;
+    constexpr inline float NEAR = 0.1f;
+    constexpr inline float FAR = 100.f;
+
+    inline shader::Uniforms Uniform;
+    inline math::Vector Target(0.f, 0.f, 0.f);
 
     inline std::vector<shader::Vertex> ModelVertices = {
         // Front face (+Z)
@@ -61,16 +68,6 @@ namespace world {
         16, 17, 18, 16, 18, 19, // Right
         20, 21, 22, 20, 22, 23  // Left
     };
-
-    inline math::Matrix GetMVP() {
-        math::Vector target(0.f, 0.f, 0.f);
-        math::Matrix view = math::CreateLookAt({0.f, 0.f, 5.f}, target, {0.f, 1.f, 0.f});
-
-        constexpr float aspect = static_cast<float>(WIDTH) / HEIGHT;
-        math::Matrix proj = math::CreatePerspective(math::ToRadian(45.f), aspect, 0.1f, 100.f);
-
-        return proj * view * Model;
-    }
 
     inline std::uint32_t GetMidpoint(const float radius, const std::uint32_t p1, const std::uint32_t p2,
                                      std::map<std::uint64_t, std::uint32_t>& cache) {
