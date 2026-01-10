@@ -35,6 +35,37 @@ namespace graphics {
             dispatchPrimitives<Shader>(shader, screenVertices, indices, type);
         }
 
+        void ApplyPostAA() {
+            std::uint32_t w = frame.GetWidth();
+            std::uint32_t h = frame.GetHeight();
+
+            const std::vector<std::uint32_t>& src = frame.GetColorBuffer();
+            std::vector<std::uint32_t> dest = src;
+
+            const int THRESHOLD = 30;
+
+            for(std::uint32_t y = 1; y < h - 1; ++y) {
+                for(std::uint32_t x = 1; x < w - 1; ++x) {
+                    std::uint32_t idx = y * w + x;
+                    std::uint32_t current = src[idx];
+
+                    std::uint32_t up = src[idx - w];
+                    std::uint32_t down = src[idx + w];
+                    std::uint32_t left = src[idx - 1];
+                    std::uint32_t right = src[idx + 1];
+
+                    int diff = colorDiff(current, up) + colorDiff(current, down) + colorDiff(current, left) +
+                               colorDiff(current, right);
+
+                    if(diff > THRESHOLD) {
+                        dest[idx] = mixColors(current, up, down, left, right);
+                    }
+                }
+            }
+
+            frame.UpdateBuffer(dest);
+        }
+
     private:
         FrameBuffer& frame;
         float width;
@@ -206,6 +237,30 @@ namespace graphics {
                 }
                 break;
             }
+        }
+
+        inline int colorDiff(uint32_t c1, uint32_t c2) {
+            int r1 = (c1 >> 16) & 0xFF;
+            int g1 = (c1 >> 8) & 0xFF;
+            int b1 = c1 & 0xFF;
+            int r2 = (c2 >> 16) & 0xFF;
+            int g2 = (c2 >> 8) & 0xFF;
+            int b2 = c2 & 0xFF;
+            return std::abs(r1 - r2) + std::abs(g1 - g2) + std::abs(b1 - b2);
+        }
+
+        inline uint32_t mixColors(uint32_t c1, uint32_t c2, uint32_t c3, uint32_t c4, uint32_t c5) {
+            int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF) +
+                     ((c5 >> 16) & 0xFF)) /
+                    5;
+
+            int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF) + ((c3 >> 8) & 0xFF) + ((c4 >> 8) & 0xFF) +
+                     ((c5 >> 8) & 0xFF)) /
+                    5;
+
+            int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
+
+            return (0xFF << 24) | (r << 16) | (g << 8) | b;
         }
     };
 }

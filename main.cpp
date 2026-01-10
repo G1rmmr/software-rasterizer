@@ -13,6 +13,8 @@ struct AppState {
 
     float X = 0.f;
     float Y = 0.f;
+
+    graphics::PrimitiveType NowType = graphics::PrimitiveType::Triangles;
     bool IsLeftDown = false;
 } State;
 
@@ -28,6 +30,25 @@ void MouseMoveCallback(struct mfb_window* window, int x, int y) {
 void ResizeCallback(struct mfb_window* window, int width, int height) {
     State.Width = static_cast<float>(width);
     State.Height = static_cast<float>(height);
+}
+
+void KeyboardCallback(struct mfb_window* window, mfb_key key, mfb_key_mod mod, bool isPressed) {
+    switch(key) {
+    case KB_KEY_SPACE:
+        if(isPressed) {
+            if(State.NowType == graphics::PrimitiveType::Triangles) {
+                State.NowType = graphics::PrimitiveType::Lines;
+            }
+            else if(State.NowType == graphics::PrimitiveType::Lines) {
+                State.NowType = graphics::PrimitiveType::Points;
+            }
+            else {
+                State.NowType = graphics::PrimitiveType::Triangles;
+            }
+        }
+        break;
+    default: break;
+    }
 }
 
 void SetWorldUniform(mfb_window* window) {
@@ -72,11 +93,12 @@ int main() {
     mfb_set_mouse_button_callback(window, MouseButtonCallback);
     mfb_set_mouse_move_callback(window, MouseMoveCallback);
     mfb_set_resize_callback(window, ResizeCallback);
+    mfb_set_keyboard_callback(window, KeyboardCallback);
 
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
     graphics::Rasterizer rasterizer(frame);
 
-    world::CreateIcoSphere(2.1f, 3);
+    world::CreateIcoSphere(2.1f, 5);
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 1.f, 0.f).Norm();
 
@@ -97,7 +119,8 @@ int main() {
         shader::Default shader;
         shader.Uniform = world::Uniform;
 
-        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, graphics::PrimitiveType::Triangles);
+        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType);
+        rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, frame.GetColor());
         if(state < 0) {

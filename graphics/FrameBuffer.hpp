@@ -92,6 +92,10 @@ namespace graphics {
 
         inline std::uint32_t* GetColor() { return colors.data(); }
 
+        const std::vector<std::uint32_t>& GetColorBuffer() const { return colors; }
+
+        void UpdateBuffer(const std::vector<std::uint32_t>& newColors) { colors = newColors; }
+
     private:
         std::vector<std::uint32_t> colors;
         std::vector<float> depthes;
