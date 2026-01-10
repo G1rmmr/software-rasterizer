@@ -1,6 +1,7 @@
-#include <MiniFB.h>
 #include <cstdio>
 #include <vector>
+
+#include <MiniFB.h>
 
 #include "World.hpp"
 #include "graphics/FrameBuffer.hpp"
@@ -16,8 +17,10 @@ int main() {
     }
 
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
-    float angle = 0.f;
 
+    world::CreateIcoSphere(1.f, 3);
+
+    float angle = 0.f;
     do {
         frame.Clear(world::COLOR);
 
@@ -27,7 +30,7 @@ int main() {
             math::CreateViewport(static_cast<float>(world::WIDTH), static_cast<float>(world::HEIGHT))
         };
 
-        graphics::Render(frame, shader, world::ModelVertices, world::ModelIndices);
+        graphics::Render(frame, shader, world::ModelVertices, world::ModelIndices, graphics::PrimitiveType::Lines);
 
         int state = mfb_update(window, frame.GetColor());
         if (state < 0) {

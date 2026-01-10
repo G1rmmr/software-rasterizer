@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <cstdint>
+#include <map>
 
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Shader.hpp"
@@ -43,41 +44,66 @@ namespace world {
         return proj * view * model;
     }
 
-    inline void CreateSphere(
+    inline std::uint32_t GetMidpoint(
         const float radius,
-        const std::uint32_t sectors,
-        const std::uint32_t stacks) {
+        const std::uint32_t p1, 
+        const std::uint32_t p2,
+        std::map<std::uint64_t, std::uint32_t>& cache) {
+        std::uint64_t key = (static_cast<std::uint64_t>(std::min(p1, p2)) << 32) | std::max(p1, p2);
+        if (cache.contains(key)) return cache[key];
 
+        math::Vector v1 = {ModelVertices[p1].Pos.X, ModelVertices[p1].Pos.Y, ModelVertices[p1].Pos.Z};
+        math::Vector v2 = {ModelVertices[p2].Pos.X, ModelVertices[p2].Pos.Y, ModelVertices[p2].Pos.Z};
+        
+        math::Vector middle = (v1 + v2) * 0.5f;
+        const float length = std::sqrt(middle.Dot(middle));
+        middle = (middle / length) * radius;
+
+        ModelVertices.push_back({{middle.X, middle.Y, middle.Z, 1.f}, {1.f, 1.f, 1.f, 1.f}});
+        return cache[key] = static_cast<std::uint32_t>(ModelVertices.size() - 1);
+    }
+
+    inline void CreateIcoSphere(const float radius, const std::uint32_t subdivisions) {
         ModelVertices.clear();
         ModelIndices.clear();
 
-        for (std::uint32_t i = 0; i <= stacks; ++i) {
-            float phi = std::numbers::pi_v<float> * static_cast<float>(i) / stacks;
+        const float t = (1.0f + std::sqrt(5.0f)) / 2.0f;
+        std::vector<math::Vector> basePos = {
+            {-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0},
+            {0, -1, t}, {0, 1, t}, {0, -1, -t}, {0, 1, -t},
+            {t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1}
+        };
 
-            for (std::uint32_t j = 0; j <= sectors; ++j) {
-                float theta = 2.f * std::numbers::pi_v<float> * static_cast<float>(j) / sectors;
-                
-                float x = radius * std::sin(phi) * std::cos(theta);
-                float y = radius * std::cos(phi);
-                float z = radius * std::sin(phi) * std::sin(theta);
-                
-                ModelVertices.push_back({{x, y, z}, {1.f, 1.f, 1.f}});
-            }
+        for (auto& p : basePos) {
+            float len = std::sqrt(p.Dot(p));
+            math::Vector n = (p / len) * radius;
+            ModelVertices.push_back({{n.X, n.Y, n.Z, 1.f}, {1.f, 1.f, 1.f, 1.f}});
         }
 
-        for (std::uint32_t i = 0; i < stacks; ++i) {
-            for (std::uint32_t j = 0; j < sectors; ++j) {
-                std::uint32_t first = i * (sectors + 1) + j;
-                std::uint32_t second = first + sectors + 1;
+        std::vector<std::uint32_t> faces = {
+            0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11,
+            1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+            3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9,
+            4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1
+        };
 
-                ModelIndices.push_back(first);
-                ModelIndices.push_back(second);
-                ModelIndices.push_back(first + 1);
+        std::map<std::uint64_t, std::uint32_t> midpointCache;
 
-                ModelIndices.push_back(second);
-                ModelIndices.push_back(second + 1);
-                ModelIndices.push_back(first + 1);
+        for (std::uint32_t i = 0; i < subdivisions; ++i) {
+            std::vector<std::uint32_t> nextFaces;
+            for (std::size_t j = 0; j < faces.size(); j += 3) {
+                std::uint32_t v1 = faces[j];
+                std::uint32_t v2 = faces[j + 1];
+                std::uint32_t v3 = faces[j + 2];
+
+                std::uint32_t a = GetMidpoint(radius, v1, v2, midpointCache);
+                std::uint32_t b = GetMidpoint(radius, v2, v3, midpointCache);
+                std::uint32_t c = GetMidpoint(radius, v3, v1, midpointCache);
+
+                nextFaces.insert(nextFaces.end(), {v1, a, c, v2, b, a, v3, c, b, a, b, c});
             }
+            faces = std::move(nextFaces);
         }
+        ModelIndices = std::move(faces);
     }
 }
