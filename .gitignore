@@ -4,3 +4,8 @@
 *.obj
 *.ilk
 *.pdb
+*.o
+*.dylib
+
+.DS_Store
+main
