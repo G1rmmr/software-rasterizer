@@ -1,7 +1,6 @@
 *.json
 *.dll
 *.exe
-*.obj
 *.ilk
 *.pdb
 *.o
@@ -9,5 +8,5 @@
 
 .DS_Store
 main
-
+main.obj
 .vscode

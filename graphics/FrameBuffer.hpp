@@ -63,15 +63,19 @@ namespace graphics {
             colors[y * width + x] = color;
         }
 
-        inline bool IsVisible(const std::uint32_t x, const std::uint32_t y, const float z) {
-            if(x < 0 || x >= width || y < 0 || y >= height) return false;
+        inline std::uint32_t GetPixel(const std::uint32_t x, const std::uint32_t y) const noexcept {
+            if(x < 0 || x >= width || y < 0 || y >= height) return 0x00000000;
+            return colors[y * width + x];
+        }
 
-            const std::uint32_t index = y * width + x;
-            if(z < depthes[index]) {
-                depthes[index] = z;
-                return true;
-            }
-            return false;
+        inline bool TestDepth(const std::uint32_t x, const std::uint32_t y, const float z) {
+            if(x >= width || y >= height) return false;
+            return z < depthes[y * width + x];
+        }
+
+        inline void SetDepth(const std::uint32_t x, const std::uint32_t y, const float z) {
+            if(x >= width || y >= height) return;
+            depthes[y * width + x] = z;
         }
 
         inline BoundingBox GetBound(const math::Vector& v0, const math::Vector& v1, const math::Vector& v2) {

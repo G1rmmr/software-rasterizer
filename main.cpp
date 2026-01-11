@@ -14,6 +14,10 @@ struct AppState {
     float X = 0.f;
     float Y = 0.f;
 
+    float PanX = 0.f;
+    float PanY = 0.f;
+    float ZoomRadius = 5.f;
+
     graphics::PrimitiveType NowType = graphics::PrimitiveType::Triangles;
     bool IsLeftDown = false;
 } State;
@@ -51,13 +55,36 @@ void KeyboardCallback(struct mfb_window* window, mfb_key key, mfb_key_mod mod, b
     }
 }
 
+void MouseScrollCallback(struct mfb_window* window, mfb_key_mod mod, float deltaX, float deltaY) {
+    float ndcX = (State.X / State.Width) * 2.f - 1.f;
+    float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
+
+    float zoomSpeed = State.ZoomRadius * 0.1f;
+
+    if(deltaY > 0) {
+        State.ZoomRadius -= zoomSpeed;
+
+        State.PanX += ndcX * zoomSpeed * 0.2f;
+        State.PanY += ndcY * zoomSpeed * 0.2f;
+    }
+    else {
+        State.ZoomRadius += zoomSpeed;
+    }
+
+    if(State.ZoomRadius < 0.1f) State.ZoomRadius = 0.1f;
+    if(State.ZoomRadius > 50.f) State.ZoomRadius = 50.f;
+}
+
 void SetWorldUniform(mfb_window* window) {
-    world::Uniform.CameraPos = world::EYE;
-    world::Uniform.View = math::CreateLookAt(world::Uniform.CameraPos, world::Target, world::UP);
+    math::Vector camPos = math::Vector(State.PanX, State.PanY, State.ZoomRadius);
+    math::Vector targetPos = math::Vector(State.PanX, State.PanY, 0.f);
+
+    world::Uniform.CameraPos = camPos;
+    world::Uniform.View = math::CreateLookAt(camPos, targetPos, world::UP);
 
     const std::uint8_t* mouseBtn = mfb_get_mouse_button_buffer(window);
     if(State.IsLeftDown) {
-        float ndcX = (State.X / State.Width) * 2.f - 1.f;
+        float ndcX = ((State.X / State.Width) * 2.f - 1.f);
         float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
 
         float distSq = ndcX * ndcX + ndcY * ndcY;
@@ -93,37 +120,37 @@ int main() {
     mfb_set_mouse_move_callback(window, MouseMoveCallback);
     mfb_set_resize_callback(window, ResizeCallback);
     mfb_set_keyboard_callback(window, KeyboardCallback);
+    mfb_set_mouse_scroll_callback(window, MouseScrollCallback);
 
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
     graphics::Rasterizer rasterizer(frame);
 
-    // world::CreateIcoSphere(2.f, 3);
-    world::CreateDiablo();
+    world::Uniform.LightDir = math::Vector(0.f, 0.f, 2.f, 0.f).Norm();
 
-    world::Uniform.LightDir = math::Vector(0.f, 0.f, 1.f, 0.f).Norm();
+    // world::CreateIcoSphere(2.f, 3);
+    // world::CreateDiablo();
+    world::CreateAfrican();
 
     float angle = 0.f;
-    float trans = 0.f;
-    float step = -0.02f;
-
-    float currentVisibleIndices = 0.0f;
-    float speed = 30.0f;
-
     do {
         frame.Clear(world::COLOR);
-
-        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f}, angle);
-        world::Target = world::Uniform.Model * math::Vector(0.f, 0.f, 0.f, 1.f);
-
+        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
         SetWorldUniform(window);
 
-        shader::Default shader;
+        shader::Model shader;
         shader.Uniform = world::Uniform;
 
-        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType
-            , static_cast<std::size_t>(currentVisibleIndices)
-        );
-        // rasterizer.ApplyPostAA();
+        for(const auto& [_, mesh] : world::SubMeshes) {
+            shader.DiffuseMap = mesh.DiffuseMap;
+            shader.NormalMap = mesh.NormalMap;
+            shader.SpecularMap = mesh.SpecularMap;
+            shader.GlossMap = mesh.GlossMap;
+            shader.GlowMap = mesh.GlowMap;
+            shader.SSSMap = mesh.SSSMap;
+            rasterizer.Render(shader, world::ModelVertices, mesh.Indices, State.NowType);
+        }
+
+        rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, frame.GetColor());
         if(state < 0) {
@@ -131,20 +158,15 @@ int main() {
             break;
         }
 
-        angle += 0.01f;
-        trans += step;
-
-        if(trans < -10.f) {
-            step = 0.02f;
-        }
-
-        if(trans >= 1.f) {
-            step = -0.02f;
-        }
-
-        currentVisibleIndices = currentVisibleIndices < world::ModelIndices.size() ? currentVisibleIndices + speed : 0.f;
+        angle += 0.001f;
 
     } while(mfb_wait_sync(window));
+
+    for(const auto& [_, mesh] : world::SubMeshes) {
+        delete mesh.DiffuseMap;
+        delete mesh.NormalMap;
+        delete mesh.SpecularMap;
+    }
 
     return 0;
 }

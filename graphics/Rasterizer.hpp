@@ -30,11 +30,8 @@ namespace graphics {
         template <typename Shader>
         inline void Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
                            const std::vector<std::uint32_t>& indices,
-                           const PrimitiveType type = PrimitiveType::Triangles,
-                           std::size_t maxIndices = 0) {
-
-            std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size())
-                                      ? indices.size() : maxIndices;
+                           const PrimitiveType type = PrimitiveType::Triangles, std::size_t maxIndices = 0) {
+            std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size()) ? indices.size() : maxIndices;
 
             std::vector<shader::Varyings> screenVertices = processVertices<Shader>(shader, vertices);
 
@@ -104,8 +101,8 @@ namespace graphics {
             int x = static_cast<int>(std::round(v.Pos.X));
             int y = static_cast<int>(std::round(v.Pos.Y));
 
-            if(frame.IsVisible(x, y, v.Pos.Z)) {
-                frame.SetPixel(x, y, shader.Color(v.Color, v.Normal, v.WorldPos));
+            if(frame.TestDepth(x, y, v.Pos.Z)) {
+                frame.SetPixel(x, y, shader.Color(v.Color, v.Normal, v.WorldPos, v.UV, v.Tangent));
             }
         }
 
@@ -136,9 +133,11 @@ namespace graphics {
                 math::Vector color = v0.Color * (1.f - t) + v1.Color * t;
                 math::Vector normal = v0.Normal * (1.f - t) + v1.Normal * t;
                 math::Vector worldPos = v0.WorldPos * (1.f - t) + v1.WorldPos * t;
+                math::Vector uv = v0.UV * (1.f - t) + v1.UV * t;
+                math::Vector tangent = v0.Tangent * (1.f - t) + v1.Tangent * t;
 
-                if(frame.IsVisible(x0, y0, z)) {
-                    frame.SetPixel(x0, y0, shader.Color(color, normal, worldPos));
+                if(frame.TestDepth(x0, y0, z)) {
+                    frame.SetPixel(x0, y0, shader.Color(color, normal, worldPos, uv, tangent));
                 }
 
                 if(x0 == x1 && y0 == y1) break;
@@ -177,8 +176,17 @@ namespace graphics {
 
                     if(bary.X < 0 || bary.Y < 0 || bary.Z < 0) continue;
 
+                    float interpolatedRecipW = (v0.RecipW * bary.X) + (v1.RecipW * bary.Y) + (v2.RecipW * bary.Z);
+                    float w = 1.f / interpolatedRecipW;
+
                     float z = v0.Pos.Z * bary.X + v1.Pos.Z * bary.Y + v2.Pos.Z * bary.Z;
-                    if(frame.IsVisible(x, y, z)) {
+                    if(frame.TestDepth(x, y, z)) {
+                        auto perspectiveInterpolate = [&](const math::Vector& a0, const math::Vector& a1,
+                                                          const math::Vector& a2) {
+                            return ((a0 * v0.RecipW * bary.X) + (a1 * v1.RecipW * bary.Y) + (a2 * v2.RecipW * bary.Z)) *
+                                   w;
+                        };
+
                         const math::Vector worldPos =
                             (v0.WorldPos * bary.X) + (v1.WorldPos * bary.Y) + (v2.WorldPos * bary.Z);
 
@@ -191,7 +199,26 @@ namespace graphics {
                         const math::Vector interpolatedColor =
                             (v0.Color * bary.X) + (v1.Color * bary.Y) + (v2.Color * bary.Z);
 
-                        frame.SetPixel(x, y, shader.Color(interpolatedColor, interpolatedNormal, worldPos));
+                        math::Vector interpolatedUV = (v0.UV * bary.X) + (v1.UV * bary.Y) + (v2.UV * bary.Z);
+
+                        math::Vector interpTangent =
+                            (v0.Tangent * bary.X) + (v1.Tangent * bary.Y) + (v2.Tangent * bary.Z);
+
+                        std::uint32_t pixelColor = shader.Color(interpolatedColor, interpolatedNormal, worldPos,
+                                                                interpolatedUV, interpTangent);
+
+                        std::uint32_t alpha = (pixelColor >> 24) & 0xFF;
+                        if(alpha == 0) continue;
+
+                        if(alpha < 255) {
+                            std::uint32_t dstColor = frame.GetPixel(x, y);
+                            std::uint32_t blendedColor = alphaBlend(pixelColor, dstColor);
+                            frame.SetPixel(x, y, blendedColor);
+                        }
+                        else {
+                            frame.SetPixel(x, y, pixelColor);
+                            frame.SetDepth(x, y, z);
+                        }
                     }
                 }
             }
@@ -268,6 +295,21 @@ namespace graphics {
             int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
 
             return (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        inline std::uint32_t alphaBlend(std::uint32_t src, std::uint32_t dst) {
+            std::uint32_t a = (src >> 24) & 0xFF;
+
+            if(a == 0) return dst;
+            if(a == 255) return src;
+
+            std::uint32_t invA = 255 - a;
+
+            std::uint32_t r = (((src >> 16) & 0xFF) * a + ((dst >> 16) & 0xFF) * invA) >> 8;
+            std::uint32_t g = (((src >> 8) & 0xFF) * a + ((dst >> 8) & 0xFF) * invA) >> 8;
+            std::uint32_t b = ((src & 0xFF) * a + (dst & 0xFF) * invA) >> 8;
+
+            return 0xFF000000 | (r << 16) | (g << 8) | b;
         }
     };
 }
