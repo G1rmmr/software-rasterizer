@@ -97,8 +97,8 @@ int main() {
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
     graphics::Rasterizer rasterizer(frame);
 
-    world::CreateIcoSphere(2.f, 3);
-    // world::CreateDiablo();
+    // world::CreateIcoSphere(2.f, 3);
+    world::CreateDiablo();
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 1.f, 0.f).Norm();
 
@@ -120,7 +120,9 @@ int main() {
         shader::Default shader;
         shader.Uniform = world::Uniform;
 
-        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType, static_cast<std::size_t>(currentVisibleIndices));
+        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType
+            , static_cast<std::size_t>(currentVisibleIndices)
+        );
         // rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, frame.GetColor());
