@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 
 namespace simd {
 
@@ -47,41 +48,17 @@ namespace simd {
     template <typename T, typename U> using is_same = std::is_same<T, U>;
 
     template <typename To, typename From> inline To Cast(From v) noexcept {
-        if constexpr(std::is_same<To, From>()) {
-            return v;
-        }
+        if constexpr(std::is_same<To, From>()) return v;
 
 #if defined(ENGINE_SIMD_SSE)
-        if constexpr(std::is_same<To, Floats>()) {
-            return _mm_castsi128_ps(v);
-        }
-        else if constexpr(std::is_same<From, Floats>()) {
-            return _mm_castps_si128(v);
-        }
-        else {
-            return v;
-        }
+        if constexpr(std::is_same<To, Floats>()) return _mm_castsi128_ps(v);
+        if constexpr(std::is_same<From, Floats>()) return _mm_castps_si128(v);
+        return v;
 
 #elif defined(ENGINE_SIMD_NEON)
-        if constexpr(is_same<To, Floats>::value) {
-            if constexpr(is_same<From, Int32s>::value) return vreinterpretq_f32_s32(v);
-            if constexpr(is_same<From, Uint32s>::value) return vreinterpretq_f32_u32(v);
-            if constexpr(is_same<From, Int16s>::value) return vreinterpretq_f32_s16(v);
-            if constexpr(is_same<From, Uint16s>::value) return vreinterpretq_f32_u16(v);
-            if constexpr(is_same<From, Int8s>::value) return vreinterpretq_f32_s8(v);
-            if constexpr(is_same<From, Uint8s>::value) return vreinterpretq_f32_u8(v);
-        }
-        else if constexpr(is_same<To, Int32s>::value) {
-            if constexpr(is_same<From, Floats>::value) return vreinterpretq_s32_f32(v);
-            if constexpr(is_same<From, Uint32s>::value) return vreinterpretq_s32_u32(v);
-            return vreinterpretq_s32_u32(vreinterpretq_u32_s32(v));
-        }
-        else if constexpr(is_same<To, Uint8s>::value) {
-            if constexpr(is_same<From, Floats>::value) return vreinterpretq_u8_f32(v);
-            if constexpr(is_same<From, Int32s>::value) return vreinterpretq_u8_s32(v);
-            if constexpr(is_same<From, Uint32s>::value) return vreinterpretq_u8_u32(v);
-        }
-        return *(To*)&v;
+        if constexpr (is_same<To, Floats>::value) return vreinterpretq_f32_u32((Uint32x4)v);
+        if constexpr (is_same<From, Floats>::value) return (To)vreinterpretq_u32_f32(v);
+        return (To)v;
 #endif
     }
 
@@ -139,6 +116,16 @@ namespace simd {
         return _mm_dp_ps(lhs, rhs, MASK);
 #elif defined(ENGINE_SIMD_NEON)
         Floats m = vmulq_f32(lhs, rhs);
+        static const std::uint32_t maskArr[4] = {
+            (MASK & 0x10) ? 0xFFFFFFFF : 0, // X (bit 4)
+            (MASK & 0x20) ? 0xFFFFFFFF : 0, // Y (bit 5)
+            (MASK & 0x40) ? 0xFFFFFFFF : 0, // Z (bit 6)
+            (MASK & 0x80) ? 0xFFFFFFFF : 0  // W (bit 7)
+        };
+
+        Uint32x4 bitMask = vld1q_u32(maskArr);
+        m = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(m), bitMask));
+
         const float sum = vaddvq_f32(m);
         return vdupq_n_f32(sum);
 #endif
@@ -162,7 +149,7 @@ namespace simd {
         return (_mm_movemask_ps(cmp) == 0xF);
 #elif defined(ENGINE_SIMD_NEON)
         Floats diff = vabdq_f32(a, b);
-        Uint32s cmp = vcltq_f32(diff, vdupq_n_f32(epsilon));
+        Uint32x4 cmp = vcltq_f32(diff, vdupq_n_f32(epsilon));
         return vminvq_u32(cmp) > 0;
 #endif
     }
@@ -183,7 +170,7 @@ namespace simd {
         return static_cast<std::uint32_t>(_mm_cvtsi128_si32(pack8));
 
 #elif defined(ENGINE_SIMD_NEON)
-        Int32s intVal = vcvtq_s32_f32(val);
+        Int32x4 intVal = vcvtq_s32_f32(val);
         Uint16x4 pack16 = vqmovun_s32(intVal);
         Uint8x8 pack8 = vqmovn_u16(vcombine_u16(pack16, pack16));
         return vget_lane_u32(vreinterpret_u32_u8(pack8), 0);
@@ -244,13 +231,12 @@ namespace simd {
 #ifdef ENGINE_SIMD_SSE
         return _mm_movemask_ps(val);
 #elif defined(ENGINE_SIMD_NEON)
-        static const std::uint8_t __attribute__((aligned(16))) mask[16] = {
-            0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
+        Uint32x4 signMask = vshrq_n_u32(vreinterpretq_u32_f32(val), 31);
 
-        Uint8x16 maskVal = vld1q_u8(mask);
-        Uint8x8 res = vshrn_n_u16(vaddq_u16(vreinterpretq_u16_u8(vandq_u8(vreinterpretq_u8_f32(val), maskVal)), 0), 4);
+        const std::uint32_t powers[4] = {1, 2, 4, 8};
+        Uint32x4 weighted = vmulq_u32(signMask, vld1q_u32(powers));
 
-        return vget_lane_u32(vreinterpret_u32_u8(res), 0);
+        return vaddvq_u32(weighted);
 #endif
     }
 

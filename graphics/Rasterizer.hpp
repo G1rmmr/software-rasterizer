@@ -30,9 +30,16 @@ namespace graphics {
         template <typename Shader>
         inline void Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
                            const std::vector<std::uint32_t>& indices,
-                           const PrimitiveType type = PrimitiveType::Triangles) {
+                           const PrimitiveType type = PrimitiveType::Triangles,
+                           std::size_t maxIndices = 0) {
+
+            std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size())
+                                      ? indices.size() : maxIndices;
+
             std::vector<shader::Varyings> screenVertices = processVertices<Shader>(shader, vertices);
-            dispatchPrimitives<Shader>(shader, screenVertices, indices, type);
+
+            std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
+            dispatchPrimitives<Shader>(shader, screenVertices, limitedIndices, type);
         }
 
         void ApplyPostAA() {

@@ -86,7 +86,6 @@ int main() {
 
     struct mfb_window* window = mfb_open_ex(WINDOW_TITLE, world::WIDTH, world::HEIGHT, WF_RESIZABLE);
     if(!window) {
-        std::fprintf(stderr, "ERROR: Could not open minifb window\n");
         return -1;
     }
 
@@ -98,7 +97,8 @@ int main() {
     graphics::FrameBuffer frame(world::WIDTH, world::HEIGHT);
     graphics::Rasterizer rasterizer(frame);
 
-    world::CreateIcoSphere(2.1f, 5);
+    world::CreateIcoSphere(2.f, 3);
+    // world::CreateDiablo();
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 1.f, 0.f).Norm();
 
@@ -106,12 +106,13 @@ int main() {
     float trans = 0.f;
     float step = -0.02f;
 
+    float currentVisibleIndices = 0.0f;
+    float speed = 30.0f;
+
     do {
         frame.Clear(world::COLOR);
 
-        world::Uniform.Model =
-            math::CreateTranslation({0.f, 0.f, trans}) * math::CreateRotation({0.f, 1.f, 0.f}, angle);
-
+        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f}, angle);
         world::Target = world::Uniform.Model * math::Vector(0.f, 0.f, 0.f, 1.f);
 
         SetWorldUniform(window);
@@ -119,8 +120,8 @@ int main() {
         shader::Default shader;
         shader.Uniform = world::Uniform;
 
-        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType);
-        rasterizer.ApplyPostAA();
+        rasterizer.Render(shader, world::ModelVertices, world::ModelIndices, State.NowType, static_cast<std::size_t>(currentVisibleIndices));
+        // rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, frame.GetColor());
         if(state < 0) {
@@ -138,6 +139,9 @@ int main() {
         if(trans >= 1.f) {
             step = -0.02f;
         }
+
+        currentVisibleIndices = currentVisibleIndices < world::ModelIndices.size() ? currentVisibleIndices + speed : 0.f;
+
     } while(mfb_wait_sync(window));
 
     return 0;

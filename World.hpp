@@ -1,7 +1,13 @@
-﻿#pragma once
+#pragma once
 
 #include <cstdint>
 #include <map>
+#include <vector>
+#include <array>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
 
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Shader.hpp"
@@ -69,22 +75,24 @@ namespace world {
         20, 21, 22, 20, 22, 23  // Left
     };
 
-    inline std::uint32_t GetMidpoint(const float radius, const std::uint32_t p1, const std::uint32_t p2,
-                                     std::map<std::uint64_t, std::uint32_t>& cache) {
-        std::uint64_t key = (static_cast<std::uint64_t>(std::min(p1, p2)) << 32) | std::max(p1, p2);
-        if(cache.contains(key)) return cache[key];
+    namespace{
+        inline std::uint32_t GetMidpoint(const float radius, const std::uint32_t p1, const std::uint32_t p2,
+                                         std::map<std::uint64_t, std::uint32_t>& cache) {
+            std::uint64_t key = (static_cast<std::uint64_t>(std::min(p1, p2)) << 32) | std::max(p1, p2);
+            if(cache.contains(key)) return cache[key];
 
-        math::Vector middle = (ModelVertices[p1].Pos + ModelVertices[p2].Pos) * 0.5f;
-        const float len = middle.Length();
+            math::Vector middle = (ModelVertices[p1].Pos + ModelVertices[p2].Pos) * 0.5f;
+            const float len = middle.Length();
 
-        math::Vector normal = (len > 1e-6f) ? (middle / len) : ModelVertices[p1].Normal;
-        math::Vector pos = normal * radius;
-        pos.W = 1.f;
-        normal.W = 0.f;
+            math::Vector normal = (len > 1e-6f) ? (middle / len) : ModelVertices[p1].Normal;
+            math::Vector pos = normal * radius;
+            pos.W = 1.f;
+            normal.W = 0.f;
 
-        math::Vector color = (ModelVertices[p1].Color + ModelVertices[p2].Color) * 0.5f;
-        ModelVertices.push_back({pos, normal, color});
-        return cache[key] = static_cast<std::uint32_t>(ModelVertices.size() - 1);
+            math::Vector color = (ModelVertices[p1].Color + ModelVertices[p2].Color) * 0.5f;
+            ModelVertices.push_back({pos, normal, color});
+            return cache[key] = static_cast<std::uint32_t>(ModelVertices.size() - 1);
+        }
     }
 
     inline void CreateIcoSphere(const float radius, const std::uint32_t subdivisions) {
@@ -131,5 +139,53 @@ namespace world {
             faces = std::move(nextFaces);
         }
         ModelIndices = std::move(faces);
+    }
+
+    inline void CreateDiablo() {
+        ModelVertices.clear();
+        ModelIndices.clear();
+
+        std::ifstream file("diablo3_pose.obj");
+        if (!file.is_open()) return;
+
+        std::vector<math::Vector> temp_vertices;
+        std::vector<math::Vector> temp_normals;
+        temp_vertices.reserve(3000);
+        temp_normals.reserve(3000);
+
+        std::string line;
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+            std::stringstream ss(line);
+            std::string type;
+            ss >> type;
+
+            if (type == "v") {
+                float x, y, z;
+                ss >> x >> y >> z;
+                temp_vertices.push_back({x, y, z, 1.0f});
+            }
+            else if (type == "vn") {
+                float x, y, z;
+                ss >> x >> y >> z;
+                temp_normals.push_back({x, y, z, 0.0f});
+            }
+            else if (type == "f") {
+                std::string vertexData;
+                for (int i = 0; i < 3; ++i) {
+                    ss >> vertexData;
+                    std::stringstream vss(vertexData);
+                    std::string index;
+                    if (std::getline(vss, index, '/')) {
+                        ModelIndices.push_back(std::stoul(index) - 1);
+                    }
+                }
+            }
+        }
+
+        for (size_t i = 0; i < temp_vertices.size(); ++i) {
+            math::Vector n = (i < temp_normals.size()) ? temp_normals[i] : math::Vector{0,0,0,0};
+            ModelVertices.push_back({temp_vertices[i], n, {0.2f, 0.3f, 0.7f, 1.f}});
+        }
     }
 }
