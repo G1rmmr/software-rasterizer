@@ -8,7 +8,8 @@
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#define STBI_NO_SIMD 
+#include "../libs/stb_image.h"
 
 #include "../math/Math.hpp"
 

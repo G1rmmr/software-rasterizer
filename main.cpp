@@ -3,6 +3,7 @@
 
 #include <MiniFB.h>
 
+#include "MiniFB_enums.h"
 #include "World.hpp"
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Rasterizer.hpp"
@@ -37,6 +38,7 @@ void ResizeCallback(struct mfb_window* window, int width, int height) {
 }
 
 void KeyboardCallback(struct mfb_window* window, mfb_key key, mfb_key_mod mod, bool isPressed) {
+    float zoomSpeed = State.ZoomRadius * 0.1f;
     switch(key) {
     case KB_KEY_SPACE:
         if(isPressed) {
@@ -51,6 +53,25 @@ void KeyboardCallback(struct mfb_window* window, mfb_key key, mfb_key_mod mod, b
             }
         }
         break;
+
+    case KB_KEY_UP:
+        if(isPressed){
+            State.ZoomRadius -= zoomSpeed;
+            if(State.ZoomRadius < 0.1f) State.ZoomRadius = 0.1f;
+        }
+        break;
+
+    case KB_KEY_DOWN:
+        if(isPressed){
+            State.ZoomRadius += zoomSpeed;
+            if(State.ZoomRadius > 50.f) State.ZoomRadius = 50.f;
+        }
+        break;
+
+    case KB_KEY_ESCAPE:
+        if(isPressed) mfb_close(window);
+        break;
+
     default: break;
     }
 }
@@ -120,8 +141,8 @@ int main() {
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 2.f, 0.f).Norm();
 
-    // world::CreateDiablo();
-    world::CreateAfrican();
+    world::CreateDiablo();
+    // world::CreateAfrican();
 
     math::Matrix diabloTrans = math::CreateTranslation({2.f, 0.f, 0.f, 1.f});
     math::Matrix diabloScale = math::CreateScale({2.f, 2.f, 2.f, 1.f});
@@ -135,7 +156,7 @@ int main() {
         frame.Clear(world::COLOR);
         SetWorldUniform(window);
 
-        world::Uniform.Model = diabloTrans * math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle) * diabloScale;
+        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
         shader.Uniform = world::Uniform;
 
         for(const graphics::Mesh& mesh : world::SubMeshes["diablo"]) {

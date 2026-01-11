@@ -17,9 +17,9 @@
 #include "math/Math.hpp"
 
 namespace world {
-    constexpr inline std::uint32_t WIDTH = 1024;
-    constexpr inline std::uint32_t HEIGHT = 1024;
-    constexpr inline std::uint32_t COLOR = 0xFF222222;
+    constexpr inline std::uint32_t WIDTH = 512;
+    constexpr inline std::uint32_t HEIGHT = 512;
+    constexpr inline std::uint32_t COLOR = 0xFF111111;
 
     const inline math::Vector UP(0.f, 1.f, 0.f);
     const inline math::Vector EYE(0.f, 0.f, 5.f);
@@ -304,13 +304,13 @@ namespace world {
         vertices.reserve(10000);
         indices.reserve(10000);
 
-        LoadObj("test\\diablo\\diablo3_pose.obj", vertices, indices);
+        LoadObj("test/diablo/diablo3_pose.obj", vertices, indices);
 
         SubMeshes["diablo"].push_back(
-            graphics::Mesh{vertices, indices, new graphics::Texture("test\\diablo\\diablo3_pose_diffuse.tga"),
-                           new graphics::Texture("test\\diablo\\diablo3_pose_nm_tangent.tga", true),
-                           new graphics::Texture("test\\diablo\\diablo3_pose_spec.tga", true), nullptr,
-                           new graphics::Texture("test\\diablo\\diablo3_pose_glow.tga"), nullptr});
+            graphics::Mesh{vertices, indices, new graphics::Texture("test/diablo/diablo3_pose_diffuse.tga"),
+                           new graphics::Texture("test/diablo/diablo3_pose_nm_tangent.tga", true),
+                           new graphics::Texture("test/diablo/diablo3_pose_spec.tga", true), nullptr,
+                           new graphics::Texture("test/diablo/diablo3_pose_glow.tga"), nullptr});
     }
 
     inline void CreateAfrican() {
@@ -320,12 +320,12 @@ namespace world {
         headVertices.reserve(10000);
         headIndices.reserve(10000);
 
-        LoadObj("test\\african\\african_head.obj", headVertices, headIndices);
+        LoadObj("test/african/african_head.obj", headVertices, headIndices);
         SubMeshes["african"].push_back(
-            graphics::Mesh{headVertices, headIndices, new graphics::Texture("test\\african\\african_head_diffuse.tga"),
-                           new graphics::Texture("test\\african\\african_head_nm_tangent.tga", true),
-                           new graphics::Texture("test\\african\\african_head_spec.tga", true), nullptr, nullptr,
-                           new graphics::Texture("test\\african\\african_head_SSS.jpg")});
+            graphics::Mesh{headVertices, headIndices, new graphics::Texture("test/african/african_head_diffuse.tga"),
+                           new graphics::Texture("test/african/african_head_nm_tangent.tga", true),
+                           new graphics::Texture("test/african/african_head_spec.tga", true), nullptr, nullptr,
+                           new graphics::Texture("test/african/african_head_SSS.jpg")});
 
         std::vector<shader::Vertex> innerVertices;
         std::vector<std::uint32_t> innerIndices;
@@ -333,11 +333,11 @@ namespace world {
         innerVertices.reserve(10000);
         innerIndices.reserve(10000);
 
-        LoadObj("test\\african\\african_head_eye_inner.obj", innerVertices, innerIndices);
+        LoadObj("test/african/african_head_eye_inner.obj", innerVertices, innerIndices);
         SubMeshes["african"].push_back(graphics::Mesh{
-            innerVertices, innerIndices, new graphics::Texture("test\\african\\african_head_eye_inner_diffuse.tga"),
-            new graphics::Texture("test\\african\\african_head_eye_inner_nm_tangent.tga", true),
-            new graphics::Texture("test\\african\\african_head_eye_inner_spec.tga", true), nullptr, nullptr, nullptr});
+            innerVertices, innerIndices, new graphics::Texture("test/african/african_head_eye_inner_diffuse.tga"),
+            new graphics::Texture("test/african/african_head_eye_inner_nm_tangent.tga", true),
+            new graphics::Texture("test/african/african_head_eye_inner_spec.tga", true), nullptr, nullptr, nullptr});
 
         std::vector<shader::Vertex> outerVertices;
         std::vector<std::uint32_t> outerIndices;
@@ -345,12 +345,12 @@ namespace world {
         outerVertices.reserve(10000);
         outerIndices.reserve(10000);
 
-        LoadObj("test\\african\\african_head_eye_outer.obj", outerVertices, outerIndices);
+        LoadObj("test/african/african_head_eye_outer.obj", outerVertices, outerIndices);
 
         SubMeshes["african"].push_back(graphics::Mesh{
-            outerVertices, outerIndices, new graphics::Texture("test\\african\\african_head_eye_outer_diffuse.tga"),
-            new graphics::Texture("test\\african\\african_head_eye_outer_nm_tangent.tga", true),
-            new graphics::Texture("test\\african\\african_head_eye_outer_spec.tga", true),
-            new graphics::Texture("test\\african\\african_head_eye_outer_gloss.tga", true), nullptr, nullptr});
+            outerVertices, outerIndices, new graphics::Texture("test/african/african_head_eye_outer_diffuse.tga"),
+            new graphics::Texture("test/african/african_head_eye_outer_nm_tangent.tga", true),
+            new graphics::Texture("test/african/african_head_eye_outer_spec.tga", true),
+            new graphics::Texture("test/african/african_head_eye_outer_gloss.tga", true), nullptr, nullptr});
     }
 }
