@@ -17,9 +17,9 @@
 #include "math/Math.hpp"
 
 namespace world {
-    constexpr inline std::uint32_t WIDTH = 1600;
-    constexpr inline std::uint32_t HEIGHT = 900;
-    constexpr inline std::uint32_t COLOR = 0xFF000000;
+    constexpr inline std::uint32_t WIDTH = 1024;
+    constexpr inline std::uint32_t HEIGHT = 1024;
+    constexpr inline std::uint32_t COLOR = 0xFF222222;
 
     const inline math::Vector UP(0.f, 1.f, 0.f);
     const inline math::Vector EYE(0.f, 0.f, 5.f);
@@ -30,77 +30,30 @@ namespace world {
 
     inline shader::Uniforms Uniform;
     inline math::Vector Target(0.f, 0.f, 0.f);
-    inline std::map<std::string, graphics::Mesh> SubMeshes = {};
-
-    inline std::vector<shader::Vertex> ModelVertices = {
-        // Front face (+Z)
-        {{-1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}}, // 0
-        {{1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},  // 1
-        {{1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 2
-        {{-1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},  // 3
-
-        // Back face (-Z)
-        {{1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}},  // 4
-        {{-1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 5
-        {{-1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}},  // 6
-        {{1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},   // 7
-
-        // Top face (+Y)
-        {{-1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},  // 8
-        {{1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 9
-        {{1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},  // 10
-        {{-1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}}, // 11
-
-        // Bottom face (-Y)
-        {{-1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 12
-        {{1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}},  // 13
-        {{1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},   // 14
-        {{-1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}},  // 15
-
-        // Right face (+X)
-        {{1.f, -1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},  // 16
-        {{1.f, -1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}}, // 17
-        {{1.f, 1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},  // 18
-        {{1.f, 1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 19
-
-        // Left face (-X)
-        {{-1.f, -1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 20
-        {{-1.f, -1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}},  // 21
-        {{-1.f, 1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},   // 22
-        {{-1.f, 1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}}   // 23
-    };
-
-    inline std::vector<std::uint32_t> ModelIndices = {
-        0,  1,  2,  0,  2,  3,  // Front
-        4,  5,  6,  4,  6,  7,  // Back
-        8,  9,  10, 8,  10, 11, // Top
-        12, 13, 14, 12, 14, 15, // Bottom
-        16, 17, 18, 16, 18, 19, // Right
-        20, 21, 22, 20, 22, 23  // Left
-    };
+    inline std::map<std::string, std::vector<graphics::Mesh>> SubMeshes = {};
 
     namespace {
         inline std::uint32_t GetMidpoint(const float radius, const std::uint32_t p1, const std::uint32_t p2,
-                                         std::map<std::uint64_t, std::uint32_t>& cache) {
+                                         std::map<std::uint64_t, std::uint32_t>& cache,
+                                         std::vector<shader::Vertex>& vertices) {
             std::uint64_t key = (static_cast<std::uint64_t>(std::min(p1, p2)) << 32) | std::max(p1, p2);
             if(cache.contains(key)) return cache[key];
 
-            math::Vector middle = (ModelVertices[p1].Pos + ModelVertices[p2].Pos) * 0.5f;
+            math::Vector middle = (vertices[p1].Pos + vertices[p2].Pos) * 0.5f;
             const float len = middle.Length();
 
-            math::Vector normal = (len > 1e-6f) ? (middle / len) : ModelVertices[p1].Normal;
+            math::Vector normal = (len > 1e-6f) ? (middle / len) : vertices[p1].Normal;
             math::Vector pos = normal * radius;
             pos.W = 1.f;
             normal.W = 0.f;
 
-            math::Vector color = (ModelVertices[p1].Color + ModelVertices[p2].Color) * 0.5f;
-            ModelVertices.push_back({pos, normal, color});
-            return cache[key] = static_cast<std::uint32_t>(ModelVertices.size() - 1);
+            math::Vector color = (vertices[p1].Color + vertices[p2].Color) * 0.5f;
+            vertices.push_back({pos, normal, color});
+            return cache[key] = static_cast<std::uint32_t>(vertices.size() - 1);
         }
 
-        inline void LoadObj(const std::string& filePath, std::vector<std::uint32_t>& indices) {
-            indices.clear();
-
+        inline void LoadObj(const std::string& filePath, std::vector<shader::Vertex>& vertices,
+                            std::vector<std::uint32_t>& indices) {
             std::ifstream file(filePath);
             if(!file.is_open()) return;
 
@@ -178,30 +131,30 @@ namespace world {
                         math::Vector normal =
                             (vnIdx >= 0 && vnIdx < tempNormals.size()) ? tempNormals[vnIdx] : math::Vector{0, 0, 1, 0};
 
-                        ModelVertices.push_back({pos, normal, {1.f, 1.f, 1.f, 1.f}, uv, {0, 0, 0, 0}});
+                        vertices.push_back({pos, normal, {1.f, 1.f, 1.f, 1.f}, uv, {0, 0, 0, 0}});
 
-                        std::uint32_t newIdx = static_cast<std::uint32_t>(ModelVertices.size() - 1);
+                        std::uint32_t newIdx = static_cast<std::uint32_t>(vertices.size() - 1);
                         indices.push_back(newIdx);
                         vertexCache[vertexData] = newIdx;
                     }
                 }
             }
 
-            std::vector<math::Vector> tan1(ModelVertices.size(), math::Vector(0, 0, 0, 0));
-            std::vector<math::Vector> tan2(ModelVertices.size(), math::Vector(0, 0, 0, 0));
+            std::vector<math::Vector> tan1(vertices.size(), math::Vector(0, 0, 0, 0));
+            std::vector<math::Vector> tan2(vertices.size(), math::Vector(0, 0, 0, 0));
 
             for(size_t i = 0; i < indices.size(); i += 3) {
                 long i1 = indices[i];
                 long i2 = indices[i + 1];
                 long i3 = indices[i + 2];
 
-                const math::Vector& v1 = ModelVertices[i1].Pos;
-                const math::Vector& v2 = ModelVertices[i2].Pos;
-                const math::Vector& v3 = ModelVertices[i3].Pos;
+                const math::Vector& v1 = vertices[i1].Pos;
+                const math::Vector& v2 = vertices[i2].Pos;
+                const math::Vector& v3 = vertices[i3].Pos;
 
-                const math::Vector& w1 = ModelVertices[i1].UV;
-                const math::Vector& w2 = ModelVertices[i2].UV;
-                const math::Vector& w3 = ModelVertices[i3].UV;
+                const math::Vector& w1 = vertices[i1].UV;
+                const math::Vector& w2 = vertices[i2].UV;
+                const math::Vector& w3 = vertices[i3].UV;
 
                 float x1 = v2.X - v1.X;
                 float x2 = v3.X - v1.X;
@@ -228,21 +181,76 @@ namespace world {
                 tan2[i3] = tan2[i3] + tdir;
             }
 
-            for(long a = 0; a < ModelVertices.size(); a++) {
-                const math::Vector& n = ModelVertices[a].Normal;
+            for(long a = 0; a < vertices.size(); a++) {
+                const math::Vector& n = vertices[a].Normal;
                 const math::Vector& t = tan1[a];
 
                 math::Vector xyz = (t - n * n.Dot(t)).Norm();
 
                 float w = (n.Cross(t).Dot(tan2[a]) < 0.f) ? -1.f : 1.f;
-                ModelVertices[a].Tangent = {xyz.X, xyz.Y, xyz.Z, w};
+                vertices[a].Tangent = {xyz.X, xyz.Y, xyz.Z, w};
             }
         }
     }
 
+    inline void CreateCube() {
+        std::vector<shader::Vertex> vertices = {
+            // Front face (+Z)
+            {{-1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}}, // 0
+            {{1.f, -1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},  // 1
+            {{1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 2
+            {{-1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},  // 3
+
+            // Back face (-Z)
+            {{1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}},  // 4
+            {{-1.f, -1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 5
+            {{-1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}},  // 6
+            {{1.f, 1.f, -1.f, 1.f}, {0.f, 0.f, -1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},   // 7
+
+            // Top face (+Y)
+            {{-1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},  // 8
+            {{1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 9
+            {{1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},  // 10
+            {{-1.f, 1.f, -1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}}, // 11
+
+            // Bottom face (-Y)
+            {{-1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 12
+            {{1.f, -1.f, -1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}},  // 13
+            {{1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},   // 14
+            {{-1.f, -1.f, 1.f, 1.f}, {0.f, -1.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}},  // 15
+
+            // Right face (+X)
+            {{1.f, -1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 0.f, 1.f}, {}, {}},  // 16
+            {{1.f, -1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 1.f, 1.f, 1.f}, {}, {}}, // 17
+            {{1.f, 1.f, -1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {}, {}},  // 18
+            {{1.f, 1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 1.f, 1.f}, {}, {}},   // 19
+
+            // Left face (-X)
+            {{-1.f, -1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 1.f, 1.f}, {}, {}}, // 20
+            {{-1.f, -1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 0.f, 0.f, 1.f}, {}, {}},  // 21
+            {{-1.f, 1.f, 1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {1.f, 1.f, 0.f, 1.f}, {}, {}},   // 22
+            {{-1.f, 1.f, -1.f, 1.f}, {-1.f, 0.f, 0.f, 0.f}, {0.f, 0.f, 0.f, 1.f}, {}, {}}   // 23
+        };
+
+        std::vector<std::uint32_t> indices = {
+            0,  1,  2,  0,  2,  3,  // Front
+            4,  5,  6,  4,  6,  7,  // Back
+            8,  9,  10, 8,  10, 11, // Top
+            12, 13, 14, 12, 14, 15, // Bottom
+            16, 17, 18, 16, 18, 19, // Right
+            20, 21, 22, 20, 22, 23  // Left
+        };
+
+        SubMeshes["cube"].push_back(
+            graphics::Mesh{vertices, indices, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
+    }
+
     inline void CreateIcoSphere(const float radius, const std::uint32_t subdivisions) {
-        ModelVertices.clear();
-        ModelIndices.clear();
+        std::vector<shader::Vertex> vertices;
+        std::vector<std::uint32_t> indices;
+
+        vertices.reserve(10000);
+        indices.reserve(10000);
 
         const float t = (1.f + std::sqrt(5.f)) / 2.f;
         std::vector<math::Vector> basePos = {{-1, t, 0},  {1, t, 0},  {-1, -t, 0}, {1, -t, 0}, {0, -1, t},  {0, 1, t},
@@ -259,7 +267,7 @@ namespace world {
             math::Vector color = math::CreateRandomVector(0.f, 1.f);
             color.W = 1.f;
 
-            ModelVertices.push_back({pos, normal, {color.X, color.Y, color.Z, 1.f}});
+            vertices.push_back({pos, normal, {color.X, color.Y, color.Z, 1.f}, {}, {}});
         }
 
         std::vector<std::uint32_t> faces = {0, 11, 5,  0, 5,  1, 0, 1, 7, 0, 7,  10, 0, 10, 11, 1, 5, 9, 5, 11,
@@ -275,63 +283,74 @@ namespace world {
                 std::uint32_t v2 = faces[j + 1];
                 std::uint32_t v3 = faces[j + 2];
 
-                std::uint32_t a = GetMidpoint(radius, v1, v2, midpointCache);
-                std::uint32_t b = GetMidpoint(radius, v2, v3, midpointCache);
-                std::uint32_t c = GetMidpoint(radius, v3, v1, midpointCache);
+                std::uint32_t a = GetMidpoint(radius, v1, v2, midpointCache, vertices);
+                std::uint32_t b = GetMidpoint(radius, v2, v3, midpointCache, vertices);
+                std::uint32_t c = GetMidpoint(radius, v3, v1, midpointCache, vertices);
 
                 nextFaces.insert(nextFaces.end(), {v1, a, c, v2, b, a, v3, c, b, a, b, c});
             }
             faces = std::move(nextFaces);
         }
-        ModelIndices = std::move(faces);
+        indices = std::move(faces);
+
+        SubMeshes["sphere"].push_back(
+            graphics::Mesh{vertices, indices, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
     }
 
     inline void CreateDiablo() {
-        ModelVertices.clear();
-        SubMeshes["diablo"] = graphics::Mesh{std::vector<std::uint32_t>(),
-                                             new graphics::Texture("test\\diablo\\diablo3_pose_diffuse.tga"),
-                                             new graphics::Texture("test\\diablo\\diablo3_pose_nm_tangent.tga", true),
-                                             new graphics::Texture("test\\diablo\\diablo3_pose_spec.tga", true),
-                                             nullptr,
-                                             new graphics::Texture("test\\diablo\\diablo3_pose_glow.tga"),
-                                             nullptr};
+        std::vector<shader::Vertex> vertices;
+        std::vector<std::uint32_t> indices;
 
-        LoadObj("test\\diablo\\diablo3_pose.obj", SubMeshes["diablo"].Indices);
+        vertices.reserve(10000);
+        indices.reserve(10000);
+
+        LoadObj("test\\diablo\\diablo3_pose.obj", vertices, indices);
+
+        SubMeshes["diablo"].push_back(
+            graphics::Mesh{vertices, indices, new graphics::Texture("test\\diablo\\diablo3_pose_diffuse.tga"),
+                           new graphics::Texture("test\\diablo\\diablo3_pose_nm_tangent.tga", true),
+                           new graphics::Texture("test\\diablo\\diablo3_pose_spec.tga", true), nullptr,
+                           new graphics::Texture("test\\diablo\\diablo3_pose_glow.tga"), nullptr});
     }
 
     inline void CreateAfrican() {
-        ModelVertices.clear();
+        std::vector<shader::Vertex> headVertices;
+        std::vector<std::uint32_t> headIndices;
 
-        SubMeshes["head"] = graphics::Mesh{std::vector<std::uint32_t>(),
-                                           new graphics::Texture("test\\african\\african_head_diffuse.tga"),
-                                           new graphics::Texture("test\\african\\african_head_nm_tangent.tga", true),
-                                           new graphics::Texture("test\\african\\african_head_spec.tga", true),
-                                           nullptr,
-                                           nullptr,
-                                           new graphics::Texture("test\\african\\african_head_SSS.jpg")};
+        headVertices.reserve(10000);
+        headIndices.reserve(10000);
 
-        LoadObj("test\\african\\african_head.obj", SubMeshes["head"].Indices);
+        LoadObj("test\\african\\african_head.obj", headVertices, headIndices);
+        SubMeshes["african"].push_back(
+            graphics::Mesh{headVertices, headIndices, new graphics::Texture("test\\african\\african_head_diffuse.tga"),
+                           new graphics::Texture("test\\african\\african_head_nm_tangent.tga", true),
+                           new graphics::Texture("test\\african\\african_head_spec.tga", true), nullptr, nullptr,
+                           new graphics::Texture("test\\african\\african_head_SSS.jpg")});
 
-        SubMeshes["eye_inner"] =
-            graphics::Mesh{std::vector<std::uint32_t>(),
-                           new graphics::Texture("test\\african\\african_head_eye_inner_diffuse.tga"),
-                           new graphics::Texture("test\\african\\african_head_eye_inner_nm_tangent.tga", true),
-                           new graphics::Texture("test\\african\\african_head_eye_inner_spec.tga", true),
-                           nullptr,
-                           nullptr,
-                           nullptr};
+        std::vector<shader::Vertex> innerVertices;
+        std::vector<std::uint32_t> innerIndices;
 
-        LoadObj("test\\african\\african_head_eye_inner.obj", SubMeshes["eye_inner"].Indices);
+        innerVertices.reserve(10000);
+        innerIndices.reserve(10000);
 
-        SubMeshes["eye_outer"] =
-            graphics::Mesh{std::vector<std::uint32_t>(),
-                           new graphics::Texture("test\\african\\african_head_eye_outer_diffuse.tga"),
-                           new graphics::Texture("test\\african\\african_head_eye_outer_nm_tangent.tga", true),
-                           new graphics::Texture("test\\african\\african_head_eye_outer_spec.tga", true),
-                           new graphics::Texture("test\\african\\african_head_eye_outer_gloss.tga", true),
-                           nullptr,
-                           nullptr};
+        LoadObj("test\\african\\african_head_eye_inner.obj", innerVertices, innerIndices);
+        SubMeshes["african"].push_back(graphics::Mesh{
+            innerVertices, innerIndices, new graphics::Texture("test\\african\\african_head_eye_inner_diffuse.tga"),
+            new graphics::Texture("test\\african\\african_head_eye_inner_nm_tangent.tga", true),
+            new graphics::Texture("test\\african\\african_head_eye_inner_spec.tga", true), nullptr, nullptr, nullptr});
 
-        LoadObj("test\\african\\african_head_eye_outer.obj", SubMeshes["eye_outer"].Indices);
+        std::vector<shader::Vertex> outerVertices;
+        std::vector<std::uint32_t> outerIndices;
+
+        outerVertices.reserve(10000);
+        outerIndices.reserve(10000);
+
+        LoadObj("test\\african\\african_head_eye_outer.obj", outerVertices, outerIndices);
+
+        SubMeshes["african"].push_back(graphics::Mesh{
+            outerVertices, outerIndices, new graphics::Texture("test\\african\\african_head_eye_outer_diffuse.tga"),
+            new graphics::Texture("test\\african\\african_head_eye_outer_nm_tangent.tga", true),
+            new graphics::Texture("test\\african\\african_head_eye_outer_spec.tga", true),
+            new graphics::Texture("test\\african\\african_head_eye_outer_gloss.tga", true), nullptr, nullptr});
     }
 }

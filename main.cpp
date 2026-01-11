@@ -76,8 +76,8 @@ void MouseScrollCallback(struct mfb_window* window, mfb_key_mod mod, float delta
 }
 
 void SetWorldUniform(mfb_window* window) {
-    math::Vector camPos = math::Vector(State.PanX, State.PanY, State.ZoomRadius);
-    math::Vector targetPos = math::Vector(State.PanX, State.PanY, 0.f);
+    math::Vector targetPos = math::Vector(State.PanX, State.PanY, State.ZoomRadius);
+    math::Vector camPos = targetPos + math::Vector(0.f, 0.f, State.ZoomRadius);
 
     world::Uniform.CameraPos = camPos;
     world::Uniform.View = math::CreateLookAt(camPos, targetPos, world::UP);
@@ -87,18 +87,13 @@ void SetWorldUniform(mfb_window* window) {
         float ndcX = ((State.X / State.Width) * 2.f - 1.f);
         float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
 
-        float distSq = ndcX * ndcX + ndcY * ndcY;
-        float z = std::sqrt(1.f - distSq);
+        float yaw = ndcX * std::numbers::pi_v<float>;
+        float pitch = ndcY * 1.5f;
 
-        math::Vector viewLightDir = math::Vector(ndcX, ndcY, z, 0.f);
         math::Vector worldLightDir;
-
-        worldLightDir.X = world::Uniform.View[0][0] * viewLightDir.X + world::Uniform.View[1][0] * viewLightDir.Y +
-                          world::Uniform.View[2][0] * viewLightDir.Z;
-        worldLightDir.Y = world::Uniform.View[0][1] * viewLightDir.X + world::Uniform.View[1][1] * viewLightDir.Y +
-                          world::Uniform.View[2][1] * viewLightDir.Z;
-        worldLightDir.Z = world::Uniform.View[0][2] * viewLightDir.X + world::Uniform.View[1][2] * viewLightDir.Y +
-                          world::Uniform.View[2][2] * viewLightDir.Z;
+        worldLightDir.X = std::sin(yaw) * std::cos(pitch);
+        worldLightDir.Y = std::sin(pitch);
+        worldLightDir.Z = std::cos(yaw) * std::cos(pitch);
         worldLightDir.W = 0.f;
 
         world::Uniform.LightDir = worldLightDir.Norm();
@@ -112,9 +107,7 @@ int main() {
     const char* WINDOW_TITLE = "Software Rasterizer";
 
     struct mfb_window* window = mfb_open_ex(WINDOW_TITLE, world::WIDTH, world::HEIGHT, WF_RESIZABLE);
-    if(!window) {
-        return -1;
-    }
+    if(!window) return -1;
 
     mfb_set_mouse_button_callback(window, MouseButtonCallback);
     mfb_set_mouse_move_callback(window, MouseMoveCallback);
@@ -127,30 +120,50 @@ int main() {
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 2.f, 0.f).Norm();
 
-    // world::CreateIcoSphere(2.f, 3);
     // world::CreateDiablo();
     world::CreateAfrican();
+
+    math::Matrix diabloTrans = math::CreateTranslation({2.f, 0.f, 0.f, 1.f});
+    math::Matrix diabloScale = math::CreateScale({2.f, 2.f, 2.f, 1.f});
+
+    math::Matrix africanTrans = math::CreateTranslation({-2.f, 0.f, 0.f, 1.f});
+
+    shader::Model shader;
 
     float angle = 0.f;
     do {
         frame.Clear(world::COLOR);
-        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
         SetWorldUniform(window);
 
-        shader::Model shader;
+        world::Uniform.Model = diabloTrans * math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle) * diabloScale;
         shader.Uniform = world::Uniform;
 
-        for(const auto& [_, mesh] : world::SubMeshes) {
+        for(const graphics::Mesh& mesh : world::SubMeshes["diablo"]) {
             shader.DiffuseMap = mesh.DiffuseMap;
             shader.NormalMap = mesh.NormalMap;
             shader.SpecularMap = mesh.SpecularMap;
             shader.GlossMap = mesh.GlossMap;
             shader.GlowMap = mesh.GlowMap;
             shader.SSSMap = mesh.SSSMap;
-            rasterizer.Render(shader, world::ModelVertices, mesh.Indices, State.NowType);
+
+            rasterizer.Render(shader, mesh.Vertices, mesh.Indices, State.NowType);
         }
 
-        rasterizer.ApplyPostAA();
+        world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
+        shader.Uniform = world::Uniform;
+
+        for(const graphics::Mesh& mesh : world::SubMeshes["african"]) {
+            shader.DiffuseMap = mesh.DiffuseMap;
+            shader.NormalMap = mesh.NormalMap;
+            shader.SpecularMap = mesh.SpecularMap;
+            shader.GlossMap = mesh.GlossMap;
+            shader.GlowMap = mesh.GlowMap;
+            shader.SSSMap = mesh.SSSMap;
+
+            rasterizer.Render(shader, mesh.Vertices, mesh.Indices, State.NowType);
+        }
+
+        // rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, frame.GetColor());
         if(state < 0) {
@@ -158,15 +171,26 @@ int main() {
             break;
         }
 
-        angle += 0.001f;
+        angle += 0.005f;
 
     } while(mfb_wait_sync(window));
 
-    for(const auto& [_, mesh] : world::SubMeshes) {
+    for(const graphics::Mesh& mesh : world::SubMeshes["diablo"]) {
         delete mesh.DiffuseMap;
         delete mesh.NormalMap;
         delete mesh.SpecularMap;
+        delete mesh.GlossMap;
+        delete mesh.GlowMap;
+        delete mesh.SSSMap;
     }
 
+    for(const graphics::Mesh& mesh : world::SubMeshes["african"]) {
+        delete mesh.DiffuseMap;
+        delete mesh.NormalMap;
+        delete mesh.SpecularMap;
+        delete mesh.GlossMap;
+        delete mesh.GlowMap;
+        delete mesh.SSSMap;
+    }
     return 0;
 }
