@@ -17,9 +17,9 @@
 #include "math/Math.hpp"
 
 namespace world {
-    constexpr inline std::uint32_t WIDTH = 512;
-    constexpr inline std::uint32_t HEIGHT = 512;
-    constexpr inline std::uint32_t COLOR = 0xFF111111;
+    constexpr inline std::uint32_t WIDTH = 800;
+    constexpr inline std::uint32_t HEIGHT = 450;
+    constexpr inline std::uint32_t COLOR = 0xFF000000;
 
     const inline math::Vector UP(0.f, 1.f, 0.f);
     const inline math::Vector EYE(0.f, 0.f, 5.f);
@@ -191,6 +191,23 @@ namespace world {
                 vertices[a].Tangent = {xyz.X, xyz.Y, xyz.Z, w};
             }
         }
+    }
+
+    inline void CreateWall() {
+        std::vector<shader::Vertex> vertices = {
+            // Front face (+Z)
+            {{-10.f, -10.f, -5.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.1f, 0.1f, 0.1f, 1.f}, {}, {}}, // 0
+            {{10.f, -10.f, -5.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.1f, 0.1f, 0.1f, 1.f}, {}, {}},  // 1
+            {{10.f, 10.f, -5.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.1f, 0.1f, 0.1f, 1.f}, {}, {}},   // 2
+            {{-10.f, 10.f, -5.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.1f, 0.1f, 0.1f, 1.f}, {}, {}},  // 3
+        };
+
+        std::vector<std::uint32_t> indices = {
+            0,  1,  2,  0,  2,  3,  // Front
+        };
+
+        SubMeshes["wall"].push_back(
+            graphics::Mesh{vertices, indices, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr});
     }
 
     inline void CreateCube() {

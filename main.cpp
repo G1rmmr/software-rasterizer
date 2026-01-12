@@ -141,8 +141,9 @@ int main() {
 
     world::Uniform.LightDir = math::Vector(0.f, 0.f, 2.f, 0.f).Norm();
 
-    world::CreateDiablo();
-    // world::CreateAfrican();
+    // world::CreateDiablo();
+    world::CreateAfrican();
+    world::CreateWall();
 
     math::Matrix diabloTrans = math::CreateTranslation({2.f, 0.f, 0.f, 1.f});
     math::Matrix diabloScale = math::CreateScale({2.f, 2.f, 2.f, 1.f});
@@ -156,6 +157,21 @@ int main() {
         frame.Clear(world::COLOR);
         SetWorldUniform(window);
 
+        world::Uniform.Model = math::CreateScale({1.f, 1.f, 1.f});
+        shader.Uniform = world::Uniform;
+
+        for(const graphics::Mesh& mesh : world::SubMeshes["wall"]) {
+            shader.DiffuseMap = mesh.DiffuseMap;
+            shader.NormalMap = mesh.NormalMap;
+            shader.SpecularMap = mesh.SpecularMap;
+            shader.GlossMap = mesh.GlossMap;
+            shader.GlowMap = mesh.GlowMap;
+            shader.SSSMap = mesh.SSSMap;
+
+            rasterizer.Render(shader, mesh.Vertices, mesh.Indices, State.NowType);
+        }
+
+        /*
         world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
         shader.Uniform = world::Uniform;
 
@@ -169,6 +185,8 @@ int main() {
 
             rasterizer.Render(shader, mesh.Vertices, mesh.Indices, State.NowType);
         }
+
+        */
 
         world::Uniform.Model = math::CreateRotation({0.f, 1.f, 0.f, 0.f}, angle);
         shader.Uniform = world::Uniform;
