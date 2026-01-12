@@ -104,6 +104,19 @@ namespace math {
         return mat;
     }
 
+    inline Matrix CreateOrtho(float left, float right, float bottom, float top, float near, float far) {
+        Matrix mat(0.f);
+        mat[0][0] = 2.f / (right - left);
+        mat[1][1] = 2.f / (top - bottom);
+        mat[2][2] = -2.f / (far - near);
+        mat[0][3] = -(right + left) / (right - left);
+        mat[1][3] = -(top + bottom) / (top - bottom);
+        mat[2][3] = -(far + near) / (far - near);
+        mat[3][3] = 1.f;
+
+        return mat;
+    }
+
     inline Matrix CreateScale(const Vector& scale) {
         Matrix mat;
         mat[0][0] = scale.X;

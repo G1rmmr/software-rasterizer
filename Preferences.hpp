@@ -18,17 +18,21 @@
 #include "objects/Object.hpp"
 
 namespace preferences {
+    const char* WINDOW_TITLE = "software-rasterizer";
+    constexpr inline std::uint32_t COLOR = 0xFF000000;
+
     constexpr inline std::uint32_t WIDTH = 800;
     constexpr inline std::uint32_t HEIGHT = 450;
-    constexpr inline std::uint32_t COLOR = 0xFF000000;
+
+    constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
+    constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
 
     constexpr inline float FOV_ANGLE = 45.f;
     constexpr inline float NEAR = 0.1f;
-    constexpr inline float FAR = 100.f;
+    constexpr inline float FAR = 500.f;
 
     const inline math::Vector UP(0.f, 1.f, 0.f);
     const inline math::Vector EYE(0.f, 0.f, 5.f);
-    const char* WINDOW_TITLE = "software-rasterizer";
 
     struct AppState {
         float Width = static_cast<float>(WIDTH);
@@ -36,13 +40,12 @@ namespace preferences {
 
         float X = 0.f;
         float Y = 0.f;
-
-        float PanX = 0.f;
-        float PanY = 0.f;
-        float ZoomRadius = 5.f;
+        float CamDistance = 10.f;
 
         graphics::PrimitiveType NowType = graphics::PrimitiveType::Triangles;
+
         bool IsLeftDown = false;
+        bool IsShowingShadowMap = false;
     } State;
 
     inline std::vector<std::shared_ptr<Object>> Objects;
@@ -50,6 +53,10 @@ namespace preferences {
     inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
     inline graphics::Rasterizer Rasterizer(Frame);
     inline shader::Model Shader;
+
+    inline graphics::FrameBuffer ShadowFrame(SHADOW_WIDTH, SHADOW_HEIGHT);
+    inline graphics::Rasterizer ShadowRasterizer(ShadowFrame);
+    inline shader::Shadow ShadowShader;
 
     inline shader::Uniforms Uniform;
     inline math::Vector Target(0.f, 0.f, 0.f);
@@ -71,7 +78,6 @@ namespace preferences {
         }
 
         inline void KeyboardCallback(struct mfb_window* window, mfb_key key, mfb_key_mod mod, bool isPressed) {
-            float zoomSpeed = State.ZoomRadius * 0.1f;
             switch(key) {
             case KB_KEY_SPACE:
                 if(isPressed) {
@@ -87,18 +93,8 @@ namespace preferences {
                 }
                 break;
 
-            case KB_KEY_UP:
-                if(isPressed) {
-                    State.ZoomRadius -= zoomSpeed;
-                    if(State.ZoomRadius < 0.1f) State.ZoomRadius = 0.1f;
-                }
-                break;
-
-            case KB_KEY_DOWN:
-                if(isPressed) {
-                    State.ZoomRadius += zoomSpeed;
-                    if(State.ZoomRadius > 50.f) State.ZoomRadius = 50.f;
-                }
+            case KB_KEY_BACKSPACE:
+                if(isPressed) State.IsShowingShadowMap = !State.IsShowingShadowMap;
                 break;
 
             case KB_KEY_ESCAPE:
@@ -110,23 +106,15 @@ namespace preferences {
         }
 
         inline void MouseScrollCallback(struct mfb_window* window, mfb_key_mod mod, float deltaX, float deltaY) {
-            float ndcX = (State.X / State.Width) * 2.f - 1.f;
-            float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
+            float zoomSpeed = 2.f;
 
-            float zoomSpeed = State.ZoomRadius * 0.1f;
+            if(deltaY > 0)
+                State.CamDistance -= zoomSpeed;
+            else
+                State.CamDistance += zoomSpeed;
 
-            if(deltaY > 0) {
-                State.ZoomRadius -= zoomSpeed;
-
-                State.PanX += ndcX * zoomSpeed * 0.2f;
-                State.PanY += ndcY * zoomSpeed * 0.2f;
-            }
-            else {
-                State.ZoomRadius += zoomSpeed;
-            }
-
-            if(State.ZoomRadius < 0.1f) State.ZoomRadius = 0.1f;
-            if(State.ZoomRadius > 50.f) State.ZoomRadius = 50.f;
+            if(State.CamDistance < 1.f) State.CamDistance = 1.f;
+            if(State.CamDistance > 200.f) State.CamDistance = 200.f;
         }
 
     }
@@ -141,13 +129,21 @@ namespace preferences {
         mfb_set_keyboard_callback(window, KeyboardCallback);
         mfb_set_mouse_scroll_callback(window, MouseScrollCallback);
 
-        Uniform.LightDir = math::Vector(0.f, 0.f, 2.f, 0.f).Norm();
+        Uniform.LightDir = math::Vector(-0.5f, 0.0f, 1.0f, 0.0f).Norm();
+
+        ShadowFrame.Clear(0xFFFFFFFF);
+        Shader.ShadowMap = &ShadowFrame.GetDepthBuffer();
+        Shader.ShadowMapWidth = (float)SHADOW_WIDTH;
+        Shader.ShadowMapHeight = (float)SHADOW_HEIGHT;
+
         return window;
     }
 
     inline void UpdateUniform(mfb_window* window) {
-        math::Vector targetPos = math::Vector(State.PanX, State.PanY, State.ZoomRadius);
-        math::Vector camPos = targetPos + math::Vector(0.f, 0.f, State.ZoomRadius);
+        static const math::Vector viewDir = math::Vector(0.f, 0.f, 1.f).Norm();
+
+        math::Vector camPos = viewDir * State.CamDistance;
+        math::Vector targetPos = math::Vector(0.f, 0.f, 0.f);
 
         Uniform.CameraPos = camPos;
         Uniform.View = math::CreateLookAt(camPos, targetPos, UP);
@@ -155,15 +151,12 @@ namespace preferences {
         const std::uint8_t* mouseBtn = mfb_get_mouse_button_buffer(window);
         if(State.IsLeftDown) {
             float ndcX = ((State.X / State.Width) * 2.f - 1.f);
-            float ndcY = -((State.Y / State.Height) * 2.f - 1.f);
-
             float yaw = ndcX * std::numbers::pi_v<float>;
-            float pitch = ndcY * 1.5f;
 
             math::Vector worldLightDir;
-            worldLightDir.X = std::sin(yaw) * std::cos(pitch);
-            worldLightDir.Y = std::sin(pitch);
-            worldLightDir.Z = std::cos(yaw) * std::cos(pitch);
+            worldLightDir.X = std::sin(yaw);
+            worldLightDir.Y = 0.f;
+            worldLightDir.Z = std::cos(yaw);
             worldLightDir.W = 0.f;
 
             Uniform.LightDir = worldLightDir.Norm();
@@ -190,5 +183,35 @@ namespace preferences {
                 Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, preferences::State.NowType);
             }
         }
+    }
+
+    inline void MapShadow() {
+        math::Vector lightDir = Uniform.LightDir.Norm();
+        math::Vector lightPos = lightDir * 100.f;
+        math::Vector lightTarget = {0.f, 0.f, 0.f};
+
+        math::Vector lightUp = {0.f, 1.f, 0.f};
+        if(std::abs(lightDir.Y) > 0.99f) lightUp = {0.f, 0.f, 1.f};
+
+        math::Matrix lightView = math::CreateLookAt(lightPos, lightTarget, lightUp);
+
+        const float orthoSize = 15.0f;
+        math::Matrix lightProj = math::CreateOrtho(-orthoSize, orthoSize, -orthoSize, orthoSize, -200.f, 200.f);
+        math::Matrix lightSpaceMatrix = lightProj * lightView;
+
+        ShadowShader.Uniform.LightSpace = lightSpaceMatrix;
+        ShadowShader.Uniform.View = lightView;
+        ShadowShader.Uniform.Proj = lightProj;
+
+        ShadowFrame.Clear(0xFFFFFFFF);
+        for(const std::shared_ptr<Object> object : Objects) {
+            if(!object->ShouldRender) continue;
+
+            ShadowShader.Uniform.Model = object->Model;
+            for(const graphics::Mesh& mesh : object->Meshes) {
+                ShadowRasterizer.Render(ShadowShader, mesh.Vertices, mesh.Indices, graphics::PrimitiveType::Triangles);
+            }
+        }
+        Uniform.LightSpace = lightSpaceMatrix;
     }
 }

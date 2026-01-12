@@ -15,29 +15,30 @@ int main() {
     struct mfb_window* window = preferences::Init();
     if(!window) return -1;
 
-    std::shared_ptr<Wall> wall = std::make_shared<Wall>();
-    wall->Create();
-    preferences::Objects.push_back(wall);
+    std::shared_ptr<Wall> backWall = std::make_shared<Wall>();
+    backWall->Create();
+    backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f});
+    preferences::Objects.push_back(backWall);
 
-    std::shared_ptr<Diablo> diablo = std::make_shared<Diablo>();
-    diablo->Create();
-    diablo->ShouldRender = false;
-
-    preferences::Objects.push_back(diablo);
-
+    /*
     std::shared_ptr<African> african = std::make_shared<African>();
     african->Create();
     preferences::Objects.push_back(african);
+    */
+
+    std::shared_ptr<Diablo> model = std::make_shared<Diablo>();
+    model->Create();
+    preferences::Objects.push_back(model);
 
     float angle = 0.f;
-
     do {
         preferences::Frame.Clear(preferences::COLOR);
         preferences::UpdateUniform(window);
 
-        diablo->Model = math::CreateRotation({0.f, 1.f, 0.f}, angle);
-        african->Model = math::CreateRotation({0.f, 1.f, 0.f}, angle);
+        model->Model = math::CreateTranslation({-2.f, 0.f, 0.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
+                       math::CreateScale({2.f, 2.f, 2.f});
 
+        preferences::MapShadow();
         preferences::Render();
         // preferences::Rasterizer.ApplyPostAA();
 
@@ -46,8 +47,7 @@ int main() {
             window = nullptr;
             break;
         }
-        angle += 0.005f;
-
+        angle += 0.01f;
     } while(mfb_wait_sync(window));
     return 0;
 }

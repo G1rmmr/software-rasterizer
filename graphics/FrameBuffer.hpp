@@ -17,7 +17,7 @@ namespace graphics {
     class FrameBuffer {
     public:
         FrameBuffer(const std::uint32_t width, const std::uint32_t height)
-            : colors(width * height, 0), depthes(width * height, 1.0f), width(width), height(height) {}
+            : colors(width * height, 0), depthes(width * height, 1.f), width(width), height(height) {}
 
         ~FrameBuffer() = default;
 
@@ -96,7 +96,11 @@ namespace graphics {
 
         inline std::uint32_t* GetColor() { return colors.data(); }
 
+        std::vector<std::uint32_t>& GetColorBuffer() { return colors; }
         const std::vector<std::uint32_t>& GetColorBuffer() const { return colors; }
+
+        std::vector<float>& GetDepthBuffer() { return depthes; }
+        const std::vector<float>& GetDepthBuffer() const { return depthes; }
 
         void UpdateBuffer(const std::vector<std::uint32_t>& newColors) { colors = newColors; }
 

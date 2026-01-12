@@ -15,8 +15,8 @@ public:
 
         this->Meshes.push_back(graphics::Mesh{
             vertices, indices, std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_diffuse.tga"),
-            std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_nm_tangent.tga", true),
-            std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_spec.tga", true), nullptr,
+            std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_nm_tangent.tga"),
+            std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_spec.tga"), nullptr,
             std::make_shared<graphics::Texture>("assets/diablo/diablo3_pose_glow.tga"), nullptr});
     }
 };

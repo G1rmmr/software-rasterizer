@@ -8,7 +8,7 @@
 #include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
-#define STBI_NO_SIMD 
+#define STBI_NO_SIMD
 #include "../libs/stb_image.h"
 
 #include "../math/Math.hpp"
@@ -18,7 +18,7 @@ namespace graphics {
     public:
         Texture() = default;
 
-        explicit Texture(const char* filePath, bool isData = false) {
+        explicit Texture(const char* filePath) {
             stbi_set_flip_vertically_on_load(true);
 
             std::int32_t w;
@@ -39,13 +39,6 @@ namespace graphics {
             data.resize(size);
 
             std::memcpy(data.data(), rawData, size);
-
-            if(!isData) {
-                for(std::size_t i = 0; i < data.size(); i += 4) {
-                    std::swap(data[i], data[i + 2]);
-                }
-            }
-
             stbi_image_free(rawData);
         }
 
