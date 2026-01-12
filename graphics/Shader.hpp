@@ -85,12 +85,12 @@ namespace shader {
     struct Model {
         Uniforms Uniform;
 
-        graphics::Texture* DiffuseMap = nullptr;
-        graphics::Texture* NormalMap = nullptr;
-        graphics::Texture* SpecularMap = nullptr;
-        graphics::Texture* GlossMap = nullptr;
-        graphics::Texture* GlowMap = nullptr;
-        graphics::Texture* SSSMap = nullptr;
+        std::shared_ptr<graphics::Texture> DiffuseMap = nullptr;
+        std::shared_ptr<graphics::Texture> NormalMap = nullptr;
+        std::shared_ptr<graphics::Texture> SpecularMap = nullptr;
+        std::shared_ptr<graphics::Texture> GlossMap = nullptr;
+        std::shared_ptr<graphics::Texture> GlowMap = nullptr;
+        std::shared_ptr<graphics::Texture> SSSMap = nullptr;
 
         inline math::Vector Vertex(const math::Vector& pos) const {
             return Uniform.Proj * Uniform.View * Uniform.Model * pos;
