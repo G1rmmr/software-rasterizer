@@ -132,7 +132,7 @@ namespace preferences {
         Uniform.LightDir = math::Vector(-0.5f, 0.0f, 1.0f, 0.0f).Norm();
 
         ShadowFrame.Clear(0xFFFFFFFF);
-        Shader.ShadowMap = &ShadowFrame.GetDepthBuffer();
+        Shader.ShadowMap = &ShadowFrame.GetDepthes();
         Shader.ShadowMapWidth = (float)SHADOW_WIDTH;
         Shader.ShadowMapHeight = (float)SHADOW_HEIGHT;
 

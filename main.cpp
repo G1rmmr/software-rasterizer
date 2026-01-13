@@ -36,7 +36,7 @@ int main() {
         preferences::UpdateUniform(window);
 
         model->Model = math::CreateTranslation({-2.f, 0.f, 0.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
-                       math::CreateScale({2.f, 2.f, 2.f});
+                       math::CreateScale({3.f, 3.f, 3.f});
 
         preferences::MapShadow();
         preferences::Render();

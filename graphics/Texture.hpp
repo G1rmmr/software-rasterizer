@@ -42,8 +42,9 @@ namespace graphics {
             stbi_image_free(rawData);
         }
 
-        math::Vector Sample(float u, float v) const {
-            if(data.empty()) return {1.f, 0.f, 1.f, 1.f};
+        [[nodiscard]] ENGINE_INLINE math::Vector __vectorcall Sample(float u, float v) const noexcept {
+            if(data.empty()) [[unlikely]]
+                return {1.f, 0.f, 1.f, 1.f};
 
             u -= std::floor(u);
             v -= std::floor(v);
@@ -51,17 +52,27 @@ namespace graphics {
             std::uint32_t x = static_cast<std::uint32_t>(u * width);
             std::uint32_t y = static_cast<std::uint32_t>(v * height);
 
-            x = std::clamp(x, 0u, width - 1);
-            y = std::clamp(y, 0u, height - 1);
+            if(x >= width) x = width - 1;
+            if(y >= height) y = height - 1;
 
-            std::int32_t index = (y * width + x) * channels;
+            std::size_t index = (y * width + x) * channels;
 
-            float r = data[index] / 255.f;
-            float g = (channels > 1) ? data[index + 1] / 255.f : r;
-            float b = (channels > 2) ? data[index + 2] / 255.f : r;
-            float a = (channels > 3) ? data[index + 3] / 255.f : 1.f;
+            const std::uint8_t* __restrict ptr = data.data();
 
-            return {r, g, b, a};
+            if(channels == 4) {
+                float r = ptr[index] * (1.0f / 255.0f);
+                float g = ptr[index + 1] * (1.0f / 255.0f);
+                float b = ptr[index + 2] * (1.0f / 255.0f);
+                float a = ptr[index + 3] * (1.0f / 255.0f);
+                return math::Vector(r, g, b, a);
+            }
+
+            float r = ptr[index] * (1.0f / 255.0f);
+            float g = (channels > 1) ? ptr[index + 1] * (1.0f / 255.0f) : r;
+            float b = (channels > 2) ? ptr[index + 2] * (1.0f / 255.0f) : r;
+            float a = (channels > 3) ? ptr[index + 3] * (1.0f / 255.0f) : 1.f;
+
+            return math::Vector(r, g, b, a);
         }
 
     private:

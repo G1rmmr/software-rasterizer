@@ -20,87 +20,74 @@ namespace math {
 
         ~Vector() noexcept = default;
 
-        Vector() noexcept : V(simd::Reset()) {}
+        ENGINE_INLINE Vector() noexcept : V(simd::Reset()) {}
+        ENGINE_INLINE Vector(const float val) noexcept : V(simd::Set(val)) {}
+        ENGINE_INLINE Vector(const simd::Floats v) noexcept : V(v) {}
+        ENGINE_INLINE Vector(const float x, const float y, const float z, const float w = 0.f) noexcept
+            : V(simd::Set(x, y, z, w)) {}
 
-        Vector(const float val) noexcept : V(simd::Set(val)) {}
+        Vector(const Vector&) = default;
+        Vector(Vector&&) = default;
+        Vector& operator=(const Vector&) = default;
+        Vector& operator=(Vector&&) = default;
 
-        Vector(const simd::Floats& v) noexcept : V(v) {}
-
-        Vector(const float x, const float y, const float z, const float w = 0.f) noexcept : V(simd::Set(x, y, z, w)) {}
-
-        Vector(const Vector& other) noexcept : V(other.V) {}
-
-        Vector(Vector&& other) noexcept : V(other.V) {}
-
-        Vector& operator=(const Vector& other) noexcept {
-            if(this != &other) V = other.V;
-            return *this;
-        }
-
-        Vector& operator=(Vector&& other) noexcept {
-            if(this != &other) V = other.V;
-            return *this;
-        }
-
-        Vector& operator+=(const Vector& other) noexcept {
+        ENGINE_INLINE Vector& __vectorcall operator+=(const Vector& other) noexcept {
             V = simd::Add(V, other.V);
             return *this;
         }
 
-        Vector operator+(Vector other) const noexcept {
-            other += *this;
-            return other;
-        }
+        ENGINE_INLINE Vector __vectorcall operator+(Vector other) const noexcept { return other += *this; }
 
-        Vector& operator-=(const Vector& other) noexcept {
+        ENGINE_INLINE Vector& __vectorcall operator-=(const Vector& other) noexcept {
             V = simd::Sub(V, other.V);
             return *this;
         }
 
-        Vector operator-(Vector other) const noexcept {
-            Vector temp(*this);
-            temp -= other;
-            return temp;
+        ENGINE_INLINE Vector __vectorcall operator-(Vector other) const noexcept {
+            return Vector(simd::Sub(V, other.V));
         }
 
-        Vector& operator*=(const float val) noexcept {
-            const simd::Floats temp = simd::Set(val);
-            V = simd::Mul(V, temp);
+        ENGINE_INLINE Vector& __vectorcall operator*=(const float val) noexcept {
+            V = simd::Mul(V, simd::Set(val));
             return *this;
         }
 
-        Vector operator*(const float val) const noexcept {
-            Vector result(*this);
-            result *= val;
-            return result;
+        ENGINE_INLINE Vector __vectorcall operator*(const float val) const noexcept {
+            return Vector(simd::Mul(V, simd::Set(val)));
         }
 
-        Vector& operator/=(const float val) noexcept {
+        ENGINE_INLINE Vector& __vectorcall operator/=(const float val) noexcept {
             assert(val != 0.f && "Division by zero!");
-            *this *= 1 / val;
+
+            const float inv = 1.f / val;
+            V = simd::Mul(V, simd::Set(inv));
             return *this;
         }
 
-        Vector operator/(const float val) const noexcept {
-            Vector result(*this);
-            result /= val;
-            return result;
+        ENGINE_INLINE Vector __vectorcall operator/(const float val) const noexcept {
+            assert(val != 0.f && "Division by zero!");
+            return Vector(simd::Mul(V, simd::Set(1.f / val)));
         }
 
-        bool operator==(const Vector& other) const noexcept { return simd::AllClose(V, other.V); }
-        bool operator!=(const Vector& other) const noexcept { return !simd::AllClose(V, other.V); }
-
-        Vector Reciprocal() const noexcept { return Vector(simd::Reciprocal(V)); }
-        Vector Sqrt() const noexcept { return Vector(simd::Sqrt(V)); }
-
-        float Dot(const Vector& other) const noexcept {
-            const Vector temp{simd::HorizonSum<0x71>(V, other.V)};
-            return simd::GetFirst(temp.V);
+        ENGINE_INLINE bool __vectorcall operator==(const Vector& other) const noexcept {
+            return simd::AllClose(V, other.V);
+        }
+        ENGINE_INLINE bool __vectorcall operator!=(const Vector& other) const noexcept {
+            return !simd::AllClose(V, other.V);
         }
 
-        float Cross2D(const Vector& other) const noexcept { return X * other.Y - Y * other.X; }
+        ENGINE_INLINE Vector __vectorcall Reciprocal() const noexcept { return Vector(simd::Reciprocal(V)); }
+        ENGINE_INLINE Vector __vectorcall Sqrt() const noexcept { return Vector(simd::Sqrt(V)); }
 
-        Vector Cross(const Vector& other) const noexcept {
+        ENGINE_INLINE float __vectorcall Dot(const Vector& other) const noexcept {
+            return simd::GetFirst(simd::HorizonSum<0x71>(V, other.V));
+        }
+
+        ENGINE_INLINE float __vectorcall Cross2D(const Vector& other) const noexcept {
+            return X * other.Y - Y * other.X;
+        }
+
+        ENGINE_INLINE Vector __vectorcall Cross(const Vector& other) const noexcept {
             const std::uint8_t leftMask = SIMD_MASK(3, 0, 2, 1);
             const std::uint8_t rightMask = SIMD_MASK(3, 1, 0, 2);
 
@@ -110,12 +97,9 @@ namespace math {
             return left - right;
         }
 
-        float Length() const noexcept {
-            float dot = Dot(*this);
-            return std::sqrt(dot);
-        }
+        ENGINE_INLINE float Length() const noexcept { return std::sqrt(Dot(*this)); }
 
-        Vector Norm() const noexcept {
+        ENGINE_INLINE Vector Norm() const noexcept {
             const float len = Length();
             if(len > 1e-6f) return *this / len;
             return Vector(0.f);

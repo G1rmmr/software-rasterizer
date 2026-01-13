@@ -7,6 +7,34 @@
 #include <thread>
 #include <vector>
 
+#if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__)
+#include <emmintrin.h>
+#endif
+
+class SpinLock {
+    std::atomic_flag flag = ATOMIC_FLAG_INIT;
+
+public:
+    void lock() {
+        while(flag.test_and_set(std::memory_order_acquire)) {
+#if defined(_M_X64) || defined(_M_IX86)
+            _mm_pause();
+
+#elif defined(__aarch64__) || defined(_M_ARM64)
+            __asm__ __volatile__("yield");
+#endif
+        }
+    }
+
+    void unlock() { flag.clear(std::memory_order_release); }
+
+    SpinLock() = default;
+    SpinLock(SpinLock&&) noexcept { flag.clear(); }
+
+    SpinLock(const SpinLock&) = delete;
+    SpinLock& operator=(const SpinLock&) = delete;
+};
+
 // Wait-Free Atomic Counter
 class ParallelExecutor {
 public:

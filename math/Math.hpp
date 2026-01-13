@@ -11,23 +11,23 @@
 
 namespace math {
     namespace {
-        inline std::mt19937& GetRandomEngine() {
+        ENGINE_INLINE std::mt19937& GetRandomEngine() {
             static thread_local std::random_device rd;
             static thread_local std::mt19937 gen(rd());
             return gen;
         }
     }
 
-    inline float RandomFloat(const float min, const float max) {
+    ENGINE_INLINE float RandomFloat(const float min, const float max) {
         std::uniform_real_distribution<float> dist(min, max);
         return dist(GetRandomEngine());
     }
 
-    inline Vector CreateRandomVector(const float min, const float max) {
+    ENGINE_INLINE Vector CreateRandomVector(const float min, const float max) {
         return Vector(RandomFloat(min, max), RandomFloat(min, max), RandomFloat(min, max), 1.f);
     }
 
-    inline Matrix CreateRandomMatrix(const float min, const float max) {
+    ENGINE_INLINE Matrix __vectorcall CreateRandomMatrix(const float min, const float max) {
         Matrix mat;
         for(int i = 0; i < 4; ++i) {
             mat.Cols[i] =
@@ -36,7 +36,7 @@ namespace math {
         return mat;
     }
 
-    inline Vector operator*(const Matrix& mat, const Vector& vec) noexcept {
+    ENGINE_INLINE Vector __vectorcall operator*(const Matrix& mat, const Vector& vec) noexcept {
         simd::Floats res = simd::Mul(mat.Cols[0], simd::Set(vec.X));
         res = simd::Add(res, simd::Mul(mat.Cols[1], simd::Set(vec.Y)));
         res = simd::Add(res, simd::Mul(mat.Cols[2], simd::Set(vec.Z)));
@@ -45,23 +45,28 @@ namespace math {
         return Vector(res);
     }
 
-    inline Quaternion FromAxisAngle(const Vector& axis, const float radian) noexcept {
+    ENGINE_INLINE Quaternion __vectorcall FromAxisAngle(const Vector& axis, const float radian) noexcept {
         return Quaternion(axis.Norm() * std::sin(radian * 0.5f), std::cos(radian * 0.5f));
     }
 
-    inline Vector GetBarycentric(const Vector& pos, const Vector& a, const Vector& b, const Vector& c) noexcept {
+    ENGINE_INLINE Vector __vectorcall GetBarycentric(const Vector& pos, const Vector& a, const Vector& b,
+                                                     const Vector& c) noexcept {
         const float area = (b - a).Cross2D(c - a);
 
-        if(std::abs(area) < 1e-6f) return Vector(-1.f, -1.f, -1.f, 0.f);
+        if(std::abs(area) < 1e-6f) [[unlikely]]
+            return Vector(-1.f, -1.f, -1.f, 0.f);
 
-        const float wA = (b - pos).Cross2D(c - pos) / area;
-        const float wB = (c - pos).Cross2D(a - pos) / area;
+        const float invArea = 1.f / area;
+
+        const float wA = (b - pos).Cross2D(c - pos) * invArea;
+        const float wB = (c - pos).Cross2D(a - pos) * invArea;
         const float wC = 1.f - wA - wB;
 
         return Vector(wA, wB, wC, 0.f);
     }
 
-    inline Matrix CreateViewport(const std::uint32_t screenWidth, const std::uint32_t screenHeight) {
+    ENGINE_INLINE Matrix __vectorcall CreateViewport(const std::uint32_t screenWidth,
+                                                     const std::uint32_t screenHeight) {
         const float width = static_cast<float>(screenWidth);
         const float height = static_cast<float>(screenHeight);
 
@@ -76,7 +81,7 @@ namespace math {
         return mat;
     }
 
-    inline Matrix CreateLookAt(const Vector& eye, const Vector& target, const Vector& up) {
+    ENGINE_INLINE Matrix __vectorcall CreateLookAt(const Vector& eye, const Vector& target, const Vector& up) {
         const Vector z = (eye - target).Norm();
         const Vector x = up.Cross(z).Norm();
         const Vector y = z.Cross(x);
@@ -90,7 +95,8 @@ namespace math {
         return mat;
     }
 
-    inline Matrix CreatePerspective(const float fov, const float aspect, const float near, const float far) {
+    ENGINE_INLINE Matrix __vectorcall CreatePerspective(const float fov, const float aspect, const float near,
+                                                        const float far) {
         const float tanHalfFov = std::tan(fov * 0.5f);
 
         Matrix mat(0.f);
@@ -104,7 +110,8 @@ namespace math {
         return mat;
     }
 
-    inline Matrix CreateOrtho(float left, float right, float bottom, float top, float near, float far) {
+    ENGINE_INLINE Matrix __vectorcall CreateOrtho(float left, float right, float bottom, float top, float near,
+                                                  float far) {
         Matrix mat(0.f);
         mat[0][0] = 2.f / (right - left);
         mat[1][1] = 2.f / (top - bottom);
@@ -117,7 +124,7 @@ namespace math {
         return mat;
     }
 
-    inline Matrix CreateScale(const Vector& scale) {
+    ENGINE_INLINE Matrix __vectorcall CreateScale(const Vector& scale) {
         Matrix mat;
         mat[0][0] = scale.X;
         mat[1][1] = scale.Y;
@@ -126,22 +133,22 @@ namespace math {
         return mat;
     }
 
-    inline Matrix CreateRotation(const Vector& axis, const float radian) {
+    ENGINE_INLINE Matrix __vectorcall CreateRotation(const Vector& axis, const float radian) {
         return FromAxisAngle(axis, radian).ToMatrix();
     }
 
-    inline Matrix CreateTranslation(const Vector& position) {
+    ENGINE_INLINE Matrix __vectorcall CreateTranslation(const Vector& position) {
         Matrix mat;
         mat.Cols[3] = simd::Set(position.X, position.Y, position.Z, 1.f);
 
         return mat;
     }
 
-    inline constexpr float ToRadian(const float degree) noexcept {
+    ENGINE_INLINE constexpr float ToRadian(const float degree) noexcept {
         return degree * (std::numbers::pi_v<float> / 180.f);
     }
 
-    inline constexpr float ToDegree(const float radian) noexcept {
+    ENGINE_INLINE constexpr float ToDegree(const float radian) noexcept {
         return radian * (180.f / std::numbers::pi_v<float>);
     }
 }

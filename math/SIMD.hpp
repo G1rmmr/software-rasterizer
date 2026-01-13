@@ -1,7 +1,16 @@
 #pragma once
 
+#include <bit>
 #include <cstdint>
 #include <type_traits>
+
+#if defined(_MSC_VER)
+#define ENGINE_INLINE [[nodiscard]] [[msvc::forceENGINE_INLINE]] inline
+#define ENGINE_VECTORCALL __vectorcall
+#else
+#define ENGINE_INLINE [[nodiscard]] __attribute__((always_ENGINE_INLINE)) inline
+#define ENGINE_VECTORCALL
+#endif
 
 namespace simd {
 
@@ -47,7 +56,7 @@ namespace simd {
     // Arithmetics
     template <typename T, typename U> using is_same = std::is_same<T, U>;
 
-    template <typename To, typename From> inline To Cast(From v) noexcept {
+    template <typename To, typename From> ENGINE_INLINE To Cast(From v) noexcept {
         if constexpr(std::is_same<To, From>()) return v;
 
 #if defined(ENGINE_SIMD_SSE)
@@ -62,7 +71,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Add(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Add(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_add_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -70,7 +79,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Sub(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Sub(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_sub_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -78,7 +87,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Mul(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Mul(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_mul_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -86,7 +95,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Div(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Div(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_div_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -94,7 +103,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Reciprocal(const Floats& val) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Reciprocal(const Floats val) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_rcp_ps(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -103,7 +112,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Sqrt(const Floats& val) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Sqrt(const Floats val) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_sqrt_ps(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -111,7 +120,8 @@ namespace simd {
 #endif
     }
 
-    template <std::uint8_t MASK> inline Floats HorizonSum(const Floats& lhs, const Floats& rhs) noexcept {
+    template <std::uint8_t MASK>
+    ENGINE_INLINE Floats ENGINE_VECTORCALL HorizonSum(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_dp_ps(lhs, rhs, MASK);
 #elif defined(ENGINE_SIMD_NEON)
@@ -131,7 +141,7 @@ namespace simd {
 #endif
     }
 
-    inline float GetFirst(const Floats& val) {
+    ENGINE_INLINE float ENGINE_VECTORCALL GetFirst(const Floats val) {
 #ifdef ENGINE_SIMD_SSE
         return _mm_cvtss_f32(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -139,13 +149,16 @@ namespace simd {
 #endif
     }
 
-    inline bool AllClose(const Floats& a, const Floats& b, float epsilon = 1e-5f) noexcept {
+    ENGINE_INLINE bool ENGINE_VECTORCALL AllClose(const Floats a, const Floats b, float epsilon = 1e-5f) noexcept {
 #ifdef ENGINE_SIMD_SSE
         Floats diff = _mm_sub_ps(a, b);
-        static const Floats absMask = _mm_set1_ps(-0.0f);
-        Floats absDiff = _mm_andnot_ps(absMask, diff);
+
+        const Floats absMask = _mm_castsi128_ps(_mm_set1_epi32(0x7FFFFFFF));
+        Floats absDiff = _mm_and_ps(absMask, diff);
+
         Floats eps = _mm_set1_ps(epsilon);
         Floats cmp = _mm_cmplt_ps(absDiff, eps);
+
         return (_mm_movemask_ps(cmp) == 0xF);
 #elif defined(ENGINE_SIMD_NEON)
         Floats diff = vabdq_f32(a, b);
@@ -154,7 +167,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Clamp(const Floats& v, const Floats& minVal, const Floats& maxVal) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Clamp(const Floats v, const Floats minVal, const Floats maxVal) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_min_ps(_mm_max_ps(v, minVal), maxVal);
 #elif defined(ENGINE_SIMD_NEON)
@@ -162,7 +175,7 @@ namespace simd {
 #endif
     }
 
-    inline std::uint32_t PackRGBA(const Floats& val) noexcept {
+    ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL PackRGBA(const Floats val) noexcept {
 #ifdef ENGINE_SIMD_SSE
         Int32x4 intVal = _mm_cvtps_epi32(val);
         Int16x8 pack16 = _mm_packus_epi32(intVal, intVal);
@@ -178,7 +191,7 @@ namespace simd {
     }
 
     // Logicals
-    inline Floats Reset() noexcept {
+    ENGINE_INLINE Floats Reset() noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_setzero_ps();
 #elif defined(ENGINE_SIMD_NEON)
@@ -186,7 +199,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Set(const float val) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Set(const float val) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_set1_ps(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -194,7 +207,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats Set(const float x, const float y, const float z, const float w) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Set(const float x, const float y, const float z, const float w) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_set_ps(w, z, y, x);
 #elif defined(ENGINE_SIMD_NEON)
@@ -203,7 +216,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats And(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL And(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_and_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -211,7 +224,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats GreaterEqual(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL GreaterEqual(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_cmpge_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -219,7 +232,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats LessEqual(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL LessEqual(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_cmple_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -227,7 +240,7 @@ namespace simd {
 #endif
     }
 
-    inline int GetMask(const Floats& val) noexcept {
+    ENGINE_INLINE int ENGINE_VECTORCALL GetMask(const Floats val) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_movemask_ps(val);
 #elif defined(ENGINE_SIMD_NEON)
@@ -240,7 +253,7 @@ namespace simd {
 #endif
     }
 
-    template <std::uint8_t MASK> inline Floats Swizzle(const Floats& v) noexcept {
+    template <std::uint8_t MASK> ENGINE_INLINE Floats ENGINE_VECTORCALL Swizzle(const Floats v) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_castsi128_ps(_mm_shuffle_epi32(_mm_castps_si128(v), MASK));
 #else
@@ -249,7 +262,8 @@ namespace simd {
 #endif
     }
 
-    template <std::uint8_t MASK> inline Floats Shuffle(const Floats& lhs, const Floats& rhs) noexcept {
+    template <std::uint8_t MASK>
+    ENGINE_INLINE Floats ENGINE_VECTORCALL Shuffle(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_shuffle_ps(lhs, rhs, MASK);
 #else
@@ -258,7 +272,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats UnpackHigh(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL UnpackHigh(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_unpackhi_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -266,7 +280,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats UnpackLow(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL UnpackLow(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_unpacklo_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -274,7 +288,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats PackLowHigh(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL PackLowHigh(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_movelh_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
@@ -282,7 +296,7 @@ namespace simd {
 #endif
     }
 
-    inline Floats PackHighLow(const Floats& lhs, const Floats& rhs) noexcept {
+    ENGINE_INLINE Floats ENGINE_VECTORCALL PackHighLow(const Floats lhs, const Floats rhs) noexcept {
 #ifdef ENGINE_SIMD_SSE
         return _mm_movehl_ps(lhs, rhs);
 #elif defined(ENGINE_SIMD_NEON)
