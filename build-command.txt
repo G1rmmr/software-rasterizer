@@ -1,0 +1,81 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build: Release (속도 최적화)",
+            "type": "cppbuild",
+            "command": "cl.exe",
+            "args": [
+                "/MP",
+                "/O2",
+                "/Oi",
+                "/MD",
+                "/fp:fast",
+                "/arch:AVX2",
+                "/GL",
+                "/std:c++20",
+                "/EHsc",
+                "/nologo",
+                "/utf-8",
+                "/I",
+                "${workspaceFolder}/libs",
+                "${workspaceFolder}/*.cpp",
+                "/Fe${workspaceFolder}\\main.exe",
+                "/link",
+                "/LTCG",
+                "/LIBPATH:${workspaceFolder}/libs",
+                "minifb.lib",
+                "Gdi32.lib",
+                "User32.lib",
+                "Shell32.lib",
+                "Winmm.lib",
+                "OpenGL32.lib"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "최적화된 릴리즈 빌드 (빠름)"
+        },
+        {
+            "label": "Build: Debug (디버깅용)",
+            "type": "cppbuild",
+            "command": "cl.exe",
+            "args": [
+                "/MP",
+                "/Zi",
+                "/Od",
+                "/MDd",
+                "/EHsc",
+                "/nologo",
+                "/utf-8",
+                "/std:c++20",
+                "/I",
+                "${workspaceFolder}/minifb",
+                "${workspaceFolder}/*.cpp",
+                "/Fe${workspaceFolder}\\main.exe",
+                "/link",
+                "/INCREMENTAL",
+                "/LIBPATH:${workspaceFolder}/minifb",
+                "minifb.lib",
+                "Gdi32.lib",
+                "User32.lib",
+                "Shell32.lib",
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "group": "build",
+            "detail": "디버깅 가능한 빌드 (느림)"
+        }
+    ]
+}
