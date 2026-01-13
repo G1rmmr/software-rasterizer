@@ -12,6 +12,11 @@
 namespace graphics {
     enum class PrimitiveType { Points, Lines, Triangles };
 
+    constexpr std::int32_t AO_KERNEL_SIZE = 16;
+    constexpr float AO_RADIUS = 2.f;
+    constexpr float AO_BIAS = 0.0001f;
+    constexpr float AO_STRENGTH = 1.f;
+
     class Rasterizer {
     public:
         explicit Rasterizer(FrameBuffer& frame)
@@ -20,8 +25,8 @@ namespace graphics {
               height(static_cast<float>(frame.GetHeight())) {}
 
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
-                                               const PrimitiveType type = PrimitiveType::Triangles) {
+        ENGINE_INLINE void ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                                                    const PrimitiveType type = PrimitiveType::Triangles) {
             std::vector<std::uint32_t> indices(vertices.size());
             for(size_t i = 0; i < vertices.size(); ++i) indices[i] = i;
 
@@ -29,20 +34,23 @@ namespace graphics {
         }
 
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
-                                               const std::vector<std::uint32_t>& indices,
-                                               const PrimitiveType type = PrimitiveType::Triangles,
-                                               std::size_t maxIndices = 0) {
+        ENGINE_INLINE void ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                                                    const std::vector<std::uint32_t>& indices, const float near,
+                                                    const PrimitiveType type = PrimitiveType::Triangles,
+                                                    std::size_t maxIndices = 0) {
             if(tileGrid.empty()) initTiles();
             for(auto& tile : tileGrid) tile.indices.clear();
 
             std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size()) ? indices.size() : maxIndices;
             std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
 
-            std::vector<shader::Varyings> screenVertices = processVertices<Shader>(shader, vertices);
+            std::vector<shader::Varyings> screenVertices =
+                processVertices<Shader>(shader, vertices, limitedIndices, near);
+
             dispatchPrimitives<Shader>(shader, screenVertices, limitedIndices, type);
         }
 
+        // AA
         ENGINE_INLINE void ApplyPostAA() {
             std::uint32_t* __restrict src = frame.GetColors().data();
             std::vector<std::uint32_t> temp = frame.GetColors();
@@ -74,6 +82,121 @@ namespace graphics {
             frame.UpdateBuffer(temp);
         }
 
+        // SSAO
+        void ApplySSAO(const shader::Uniforms& uniform, const float near, const float far) {
+            std::uint32_t w = frame.GetWidth();
+            std::uint32_t h = frame.GetHeight();
+
+            const float* __restrict depthBuffer = frame.GetDepth();
+            std::uint32_t* __restrict colorBuffer = frame.GetColor();
+
+            std::vector<std::uint32_t> temp = frame.GetColors();
+            std::uint32_t* __restrict dst = temp.data();
+
+            float tanHalfFov = 1.f / uniform.Proj[0][0];
+            float aspect = uniform.Proj[1][1] / uniform.Proj[0][0];
+
+            static std::vector<math::Vector> noise;
+            if(noise.empty()) {
+                noise.resize(16);
+                for(std::size_t i = 0; i < 16; ++i) {
+                    float r1 = math::RandomFloat(-1.f, 1.f);
+                    float r2 = math::RandomFloat(-1.f, 1.f);
+                    noise[i] = math::Vector(r1, r2, 0.f, 0.f).Norm();
+                }
+            }
+
+            static std::vector<math::Vector> kernel(AO_KERNEL_SIZE);
+            if(kernel.empty()) {
+                kernel.resize(AO_KERNEL_SIZE);
+                for(std::int32_t i = 0; i < AO_KERNEL_SIZE; ++i) {
+                    const float r1 = math::RandomFloat(-1.f, 1.f);
+                    const float r2 = math::RandomFloat(-1.f, 1.f);
+                    const float r3 = math::RandomFloat(-1.f, 1.f);
+
+                    math::Vector v = math::Vector(r1, r2, r3, 0.f).Norm();
+                    float scale = static_cast<float>(i) / AO_KERNEL_SIZE;
+                    scale = 0.1f + (scale * scale) * 0.9f;
+                    kernel[i] = v * scale;
+                }
+            }
+
+            math::Matrix invProj = uniform.Proj.Inv();
+
+            ParallelExecutor::GetInstance().ParallelFor(
+                0, h,
+                [&](std::int32_t y) {
+                    for(std::int32_t x = 0; x < w; ++x) {
+                        std::int32_t idx = y * w + x;
+                        float depth = depthBuffer[idx];
+                        if(depth >= 1.f - 1e-5f) continue;
+
+                        float uvX = (x + 0.5f) / static_cast<float>(h);
+                        float uvY = (y + 0.5f) / static_cast<float>(w);
+
+                        float ndcX = uvX * 2.f - 1.f;
+                        float ndcY = 1.f - uvY * 2.f;
+                        float ndcZ = depth * 2.f - 1.f;
+
+                        math::Vector viewPosRaw = invProj * math::Vector(ndcY, ndcX, ndcZ, 1.f);
+                        math::Vector viewPos = viewPosRaw / viewPosRaw.W;
+
+                        float currentPixelDepth = -viewPos.Z;
+
+                        std::int32_t noiseIdx = ((y % 4) * 4) + (x % 4);
+                        math::Vector randomVec = noise[noiseIdx];
+
+                        float occlusion = 0.f;
+                        for(std::int32_t i = 0; i < AO_KERNEL_SIZE; ++i) {
+                            math::Vector k = kernel[i];
+                            math::Vector rotatedKernel;
+                            rotatedKernel.X = k.X * randomVec.X - k.Y * randomVec.Y;
+                            rotatedKernel.Y = k.X * randomVec.Y + k.Y * randomVec.X;
+                            rotatedKernel.Z = k.Z;
+
+                            math::Vector samplePos = viewPos + (rotatedKernel * AO_RADIUS);
+                            math::Vector offset =
+                                uniform.Proj * math::Vector{samplePos.X, samplePos.Y, samplePos.Z, 1.f};
+
+                            float sNDCX = (offset.X / offset.W) * 0.5f + 0.5f;
+                            float sNDCY = (offset.Y / offset.W) * 0.5f + 0.5f;
+                            std::int32_t sX = static_cast<std::int32_t>(sNDCX * w);
+                            std::int32_t sY = static_cast<std::int32_t>(sNDCY * h);
+
+                            if(sX < 0 || sX >= static_cast<std::int32_t>(w) || sY < 0 ||
+                               sY >= static_cast<std::int32_t>(h))
+                                continue;
+
+                            float actDepthRaw = depthBuffer[sY * w + sX];
+
+                            math::Vector actClipPos(sNDCX, sNDCY, actDepthRaw * 2.f - 1.f, 1.f);
+                            math::Vector actViewPosRaw = invProj * actClipPos;
+                            math::Vector actViewPos = actViewPosRaw / actViewPosRaw.W;
+
+                            if(actViewPos.Z > samplePos.Z + AO_BIAS) {
+                                float dist = std::abs(viewPos.Z - actViewPos.Z);
+                                if(dist < AO_RADIUS) occlusion += 1.f;
+                            }
+                        }
+
+                        occlusion = std::clamp(1.f - (occlusion / AO_KERNEL_SIZE) * AO_STRENGTH, 0.f, 1.f);
+
+                        std::uint32_t c = colorBuffer[idx];
+                        std::uint8_t a = (c >> 24) & 0xFF;
+                        std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * occlusion);
+                        std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * occlusion);
+                        std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * occlusion);
+
+                        dst[idx] = (a << 24) | (r << 16) | (g << 8) | b;
+
+                        std::uint8_t aoByte = static_cast<std::uint8_t>(occlusion * 255.f);
+                        dst[idx] = (0xFF << 24) | (aoByte << 16) | (aoByte << 8) | aoByte;
+                    }
+                },
+                4);
+            frame.UpdateBuffer(temp);
+        }
+
     private:
         static constexpr std::uint8_t TILE_SIZE = 32;
 
@@ -83,8 +206,13 @@ namespace graphics {
         };
 
         std::vector<Tile> tileGrid;
+        FrameBuffer& frame;
+
         std::int32_t tilesX;
         std::int32_t tilesY;
+
+        float width;
+        float height;
 
         ENGINE_INLINE void initTiles() {
             tilesX = (static_cast<std::int32_t>(width) + TILE_SIZE - 1) / TILE_SIZE;
@@ -95,41 +223,119 @@ namespace graphics {
             for(int i = 0; i < tilesX * tilesY; ++i) tileGrid.emplace_back();
         }
 
-        FrameBuffer& frame;
-        float width;
-        float height;
+        ENGINE_INLINE void perspectiveDivide(shader::Varyings& v) {
+            float w = v.Pos.W;
+            if(std::abs(w) < 1e-6f) w = 1e-6f;
+
+            float rhw = 1.f / w;
+            v.Pos.X = (v.Pos.X * rhw + 1.f) * width * 0.5f;
+            v.Pos.Y = (1.f - v.Pos.Y * rhw) * height * 0.5f;
+            v.Pos.Z = v.Pos.Z * rhw;
+            v.Pos.W = rhw;
+            v.RecipW = rhw;
+        }
+
+        ENGINE_INLINE void clipAndPerspDivide(const shader::Varyings& v0, const shader::Varyings& v1,
+                                              const shader::Varyings& v2, const float near,
+                                              std::vector<shader::Varyings>& outList,
+                                              std::vector<std::uint32_t>& outIndices) {
+            const float W_CLIPPING_PLANE = near;
+
+            auto isInside = [&](const math::Vector& p) {
+                return p.W >= W_CLIPPING_PLANE;
+            };
+
+            auto getIntersectRatio = [&](const math::Vector& p1, const math::Vector& p2) {
+                float dist1 = p1.W - W_CLIPPING_PLANE;
+                float dist2 = p2.W - W_CLIPPING_PLANE;
+                return dist1 / (dist1 - dist2);
+            };
+
+            const shader::Varyings* inV[3] = {&v0, &v1, &v2};
+
+            shader::Varyings tempVerts[4];
+            int tempCount = 0;
+
+            // Sutherland-Hodgman
+            for(int i = 0; i < 3; ++i) {
+                const shader::Varyings& curr = *inV[i];
+                const shader::Varyings& prev = *inV[(i + 3 - 1) % 3];
+
+                bool currInside = isInside(curr.Pos);
+                bool prevInside = isInside(prev.Pos);
+
+                if(currInside && prevInside) {
+                    tempVerts[tempCount++] = curr;
+                }
+                else if(currInside && !prevInside) {
+                    float t = getIntersectRatio(prev.Pos, curr.Pos);
+                    tempVerts[tempCount++] = shader::Varyings::Lerp(prev, curr, t);
+                    tempVerts[tempCount++] = curr;
+                }
+                else if(!currInside && prevInside) {
+                    float t = getIntersectRatio(prev.Pos, curr.Pos);
+                    tempVerts[tempCount++] = shader::Varyings::Lerp(prev, curr, t);
+                }
+            }
+
+            if(tempCount < 3) return;
+
+            for(int i = 0; i < tempCount; ++i) perspectiveDivide(tempVerts[i]);
+
+            std::uint32_t baseIdx = static_cast<std::uint32_t>(outList.size());
+
+            outList.push_back(tempVerts[0]);
+            outList.push_back(tempVerts[1]);
+            outList.push_back(tempVerts[2]);
+            outIndices.push_back(baseIdx);
+            outIndices.push_back(baseIdx + 1);
+            outIndices.push_back(baseIdx + 2);
+
+            if(tempCount == 4) {
+                outList.push_back(tempVerts[3]);
+                outList.push_back(tempVerts[0]);
+                outList.push_back(tempVerts[2]);
+
+                outIndices.push_back(baseIdx + 3);
+                outIndices.push_back(baseIdx + 4);
+                outIndices.push_back(baseIdx + 5);
+            }
+        }
 
         // vertex Shader -> rasterization -> pixel Shader
         template <typename Shader>
-        ENGINE_INLINE std::vector<shader::Varyings> __vectorcall
-        processVertices(const Shader& shader, const std::vector<shader::Vertex>& in) {
+        ENGINE_INLINE std::vector<shader::Varyings>
+            ENGINE_VECTORCALL processVertices(const Shader& shader, const std::vector<shader::Vertex>& in,
+                                              std::vector<std::uint32_t>& indices, const float near) {
             const std::size_t inSize = in.size();
             std::vector<shader::Varyings> out(inSize);
 
+            std::vector<shader::Varyings> finalVaryings;
+            std::vector<std::uint32_t> finalIndices;
+            finalVaryings.reserve(indices.size());
+            finalIndices.reserve(indices.size());
+
             ParallelExecutor::GetInstance().ParallelFor(
-                0, inSize,
-                [&](std::size_t i) {
-                    out[i] = shader.Process(in[i]);
+                0, inSize, [&](std::size_t i) { out[i] = shader.Process(in[i]); }, 1);
 
-                    float w = out[i].Pos.W;
-                    if(std::abs(w) < 1e-6f) w = 1e-6f;
+            std::size_t numTriangles = indices.size() / 3;
+            for(size_t i = 0; i < numTriangles; ++i) {
+                std::uint32_t i0 = indices[i * 3];
+                std::uint32_t i1 = indices[i * 3 + 1];
+                std::uint32_t i2 = indices[i * 3 + 2];
 
-                    float rhw = 1.f / w;
-                    out[i].Pos.X = (out[i].Pos.X * rhw + 1.f) * width * 0.5f;
-                    out[i].Pos.Y = (1.f - out[i].Pos.Y * rhw) * height * 0.5f;
-                    out[i].Pos.Z = out[i].Pos.Z * rhw;
-                    out[i].Pos.W = rhw;
-                    out[i].RecipW = rhw;
-                },
-                256);
-            return out;
+                clipAndPerspDivide(out[i0], out[i1], out[i2], near, finalVaryings, finalIndices);
+            }
+
+            indices = finalIndices;
+            return finalVaryings;
         }
 
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall dispatchPrimitives(const Shader& shader,
-                                                           const std::vector<shader::Varyings>& varyings,
-                                                           const std::vector<std::uint32_t>& indices,
-                                                           const PrimitiveType type = PrimitiveType::Triangles) {
+        ENGINE_INLINE void ENGINE_VECTORCALL dispatchPrimitives(const Shader& shader,
+                                                                const std::vector<shader::Varyings>& varyings,
+                                                                const std::vector<std::uint32_t>& indices,
+                                                                const PrimitiveType type = PrimitiveType::Triangles) {
             switch(type) {
             case PrimitiveType::Points: {
                 const std::size_t pointCount = indices.size();
@@ -232,7 +438,7 @@ namespace graphics {
         }
 
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall drawPoint(const Shader& shader, const shader::Varyings& v) {
+        ENGINE_INLINE void ENGINE_VECTORCALL drawPoint(const Shader& shader, const shader::Varyings& v) {
             std::int32_t x = static_cast<std::int32_t>(std::round(v.Pos.X));
             std::int32_t y = static_cast<std::int32_t>(std::round(v.Pos.Y));
 
@@ -246,8 +452,8 @@ namespace graphics {
 
         // Bresenham's Line Algorithm
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall drawLine(const Shader& shader, const shader::Varyings& v0,
-                                                 const shader::Varyings& v1) {
+        ENGINE_INLINE void ENGINE_VECTORCALL drawLine(const Shader& shader, const shader::Varyings& v0,
+                                                      const shader::Varyings& v1) {
             int x0 = static_cast<int>(std::round(v0.Pos.X));
             int y0 = static_cast<int>(std::round(v0.Pos.Y));
             int x1 = static_cast<int>(std::round(v1.Pos.X));
@@ -291,15 +497,16 @@ namespace graphics {
             }
         }
 
-        ENGINE_INLINE float __vectorcall edge(const math::Vector& a, const math::Vector& b, const math::Vector& c) {
+        ENGINE_INLINE float ENGINE_VECTORCALL edge(const math::Vector& a, const math::Vector& b,
+                                                   const math::Vector& c) {
             return (c.X - a.X) * (b.Y - a.Y) - (c.Y - a.Y) * (b.X - a.X);
         }
 
         // Pineda + edge
         template <typename Shader>
-        ENGINE_INLINE void __vectorcall drawTriangle(const Shader& shader, const shader::Varyings& v0,
-                                                     const shader::Varyings& v1, const shader::Varyings& v2,
-                                                     const BoundingBox& clipRect) {
+        ENGINE_INLINE void ENGINE_VECTORCALL drawTriangle(const Shader& shader, const shader::Varyings& v0,
+                                                          const shader::Varyings& v1, const shader::Varyings& v2,
+                                                          const BoundingBox& clipRect) {
             const float area = edge(v0.Pos, v1.Pos, v2.Pos);
             if(area <= 0.f) return;
 
@@ -307,12 +514,10 @@ namespace graphics {
 
             BoundingBox triBound = frame.GetBound(v0.Pos, v1.Pos, v2.Pos);
 
-            if(triBound.MinX > triBound.MaxX) printf("벽이 화면 밖임!\n");
-
-            int minX = std::max(triBound.MinX, clipRect.MinX);
-            int maxX = std::min(triBound.MaxX, clipRect.MaxX);
-            int minY = std::max(triBound.MinY, clipRect.MinY);
-            int maxY = std::min(triBound.MaxY, clipRect.MaxY);
+            std::int32_t minX = std::max(triBound.MinX, clipRect.MinX);
+            std::int32_t maxX = std::min(triBound.MaxX, clipRect.MaxX);
+            std::int32_t minY = std::max(triBound.MinY, clipRect.MinY);
+            std::int32_t maxY = std::min(triBound.MaxY, clipRect.MaxY);
 
             if(minX > maxX || minY > maxY) return;
 
@@ -335,7 +540,7 @@ namespace graphics {
                 float w2 = row2;
 
                 for(int x = minX; x <= maxX; ++x) {
-                    if((static_cast<int>(w0) | static_cast<int>(w1) | static_cast<int>(w2)) >= 0) {
+                    if(w0 >= 0.f && w1 >= 0.f && w2 >= 0.f) {
                         const float b0 = w0 * invArea;
                         const float b1 = w1 * invArea;
                         const float b2 = w2 * invArea;
@@ -378,7 +583,7 @@ namespace graphics {
             }
         }
 
-        ENGINE_INLINE std::int32_t __vectorcall colorDiff(const std::uint32_t c1, const std::uint32_t c2) {
+        ENGINE_INLINE std::int32_t ENGINE_VECTORCALL colorDiff(const std::uint32_t c1, const std::uint32_t c2) {
             int r1 = (c1 >> 16) & 0xFF;
             int g1 = (c1 >> 8) & 0xFF;
             int b1 = c1 & 0xFF;
@@ -388,9 +593,9 @@ namespace graphics {
             return std::abs(r1 - r2) + std::abs(g1 - g2) + std::abs(b1 - b2);
         }
 
-        ENGINE_INLINE std::uint32_t __vectorcall mixColors(const std::uint32_t c1, const std::uint32_t c2,
-                                                           const std::uint32_t c3, const std::uint32_t c4,
-                                                           const std::uint32_t c5) {
+        ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL mixColors(const std::uint32_t c1, const std::uint32_t c2,
+                                                                const std::uint32_t c3, const std::uint32_t c4,
+                                                                const std::uint32_t c5) {
             int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF) +
                      ((c5 >> 16) & 0xFF)) /
                     5;
@@ -404,7 +609,7 @@ namespace graphics {
             return (0xFF << 24) | (r << 16) | (g << 8) | b;
         }
 
-        ENGINE_INLINE std::uint32_t __vectorcall alphaBlend(const std::uint32_t src, const std::uint32_t dst) {
+        ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL alphaBlend(const std::uint32_t src, const std::uint32_t dst) {
             std::uint32_t a = (src >> 24) & 0xFF;
 
             if(a == 0) return dst;

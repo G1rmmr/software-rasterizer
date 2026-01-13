@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <type_traits>
 
+//__vector-call
+
 #if defined(_MSC_VER)
 #define ENGINE_INLINE [[nodiscard]] [[msvc::forceENGINE_INLINE]] inline
 #define ENGINE_VECTORCALL __vectorcall
@@ -20,6 +22,10 @@ namespace simd {
 
 #define SIMD_MASK(w, z, y, x) _MM_SHUFFLE(w, z, y, x)
 #define ENGINE_SIMD_SSE
+
+    typedef __m256 Doubles;
+    typedef __m256i Longs;
+
     typedef __m128 Floats;
 
     typedef __m128i Int32x4;

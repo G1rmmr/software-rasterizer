@@ -9,22 +9,24 @@
 
 #include "objects/African.hpp"
 #include "objects/Diablo.hpp"
-#include "objects/Wall.hpp"
+#include "objects/Plane.hpp"
 
 int main() {
     struct mfb_window* window = preferences::Init();
     if(!window) return -1;
 
-    std::shared_ptr<Wall> backWall = std::make_shared<Wall>();
+    std::shared_ptr<Plane> backWall = std::make_shared<Plane>();
     backWall->Create();
-    backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f});
+    backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({0.5f, 0.5f, 0.5f});
+    ;
     preferences::Objects.push_back(backWall);
 
-    /*
-    std::shared_ptr<African> african = std::make_shared<African>();
-    african->Create();
-    preferences::Objects.push_back(african);
-    */
+    std::shared_ptr<Plane> plane = std::make_shared<Plane>();
+    plane->Create();
+    plane->Model = math::CreateTranslation({0.f, -3.f, -5.f}) *
+                   math::CreateRotation({1.f, 0.f, 0.f}, math::ToRadian(-90.f)) * math::CreateScale({0.5f, 0.5f, 0.5f});
+
+    preferences::Objects.push_back(plane);
 
     std::shared_ptr<Diablo> model = std::make_shared<Diablo>();
     model->Create();
@@ -35,11 +37,12 @@ int main() {
         preferences::Frame.Clear(preferences::COLOR);
         preferences::UpdateUniform(window);
 
-        model->Model = math::CreateTranslation({-2.f, 0.f, 0.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
-                       math::CreateScale({3.f, 3.f, 3.f});
+        model->Model = math::CreateTranslation({0.f, 2.f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
+                       math::CreateScale({5.f, 5.f, 5.f});
 
         preferences::MapShadow();
         preferences::Render();
+        preferences::Rasterizer.ApplySSAO(preferences::Uniform, preferences::NEAR, preferences::FAR);
         // preferences::Rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, preferences::Frame.GetColor());

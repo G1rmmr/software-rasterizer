@@ -129,7 +129,7 @@ namespace preferences {
         mfb_set_keyboard_callback(window, KeyboardCallback);
         mfb_set_mouse_scroll_callback(window, MouseScrollCallback);
 
-        Uniform.LightDir = math::Vector(-0.5f, 0.0f, 1.0f, 0.0f).Norm();
+        Uniform.LightDir = math::Vector(-0.5f, 1.f, 1.f, 0.f).Norm();
 
         ShadowFrame.Clear(0xFFFFFFFF);
         Shader.ShadowMap = &ShadowFrame.GetDepthes();
@@ -140,10 +140,10 @@ namespace preferences {
     }
 
     inline void UpdateUniform(mfb_window* window) {
-        static const math::Vector viewDir = math::Vector(0.f, 0.f, 1.f).Norm();
+        static const math::Vector viewDir = math::Vector(0.f, 0.5f, 1.f).Norm();
 
         math::Vector camPos = viewDir * State.CamDistance;
-        math::Vector targetPos = math::Vector(0.f, 0.f, 0.f);
+        math::Vector targetPos = math::Vector(0.f, 0.f, -5.f);
 
         Uniform.CameraPos = camPos;
         Uniform.View = math::CreateLookAt(camPos, targetPos, UP);
@@ -155,7 +155,7 @@ namespace preferences {
 
             math::Vector worldLightDir;
             worldLightDir.X = std::sin(yaw);
-            worldLightDir.Y = 0.f;
+            worldLightDir.Y = 1.f;
             worldLightDir.Z = std::cos(yaw);
             worldLightDir.W = 0.f;
 
@@ -180,7 +180,7 @@ namespace preferences {
                 Shader.GlowMap = mesh.GlowMap;
                 Shader.SSSMap = mesh.SSSMap;
 
-                Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, preferences::State.NowType);
+                Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType);
             }
         }
     }
@@ -209,7 +209,8 @@ namespace preferences {
 
             ShadowShader.Uniform.Model = object->Model;
             for(const graphics::Mesh& mesh : object->Meshes) {
-                ShadowRasterizer.Render(ShadowShader, mesh.Vertices, mesh.Indices, graphics::PrimitiveType::Triangles);
+                ShadowRasterizer.Render(ShadowShader, mesh.Vertices, mesh.Indices, NEAR,
+                                        graphics::PrimitiveType::Triangles);
             }
         }
         Uniform.LightSpace = lightSpaceMatrix;

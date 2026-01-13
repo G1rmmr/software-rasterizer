@@ -7,10 +7,10 @@
 
 namespace graphics {
     struct BoundingBox {
-        std::uint32_t MinX;
-        std::uint32_t MaxX;
-        std::uint32_t MinY;
-        std::uint32_t MaxY;
+        std::int32_t MinX;
+        std::int32_t MaxX;
+        std::int32_t MinY;
+        std::int32_t MaxY;
         bool ShouldRender;
     };
 
@@ -73,8 +73,8 @@ namespace graphics {
             depthes[y * width + x] = z;
         }
 
-        ENGINE_INLINE BoundingBox __vectorcall GetBound(const math::Vector& v0, const math::Vector& v1,
-                                                        const math::Vector& v2) const noexcept {
+        ENGINE_INLINE BoundingBox ENGINE_VECTORCALL GetBound(const math::Vector& v0, const math::Vector& v1,
+                                                             const math::Vector& v2) const noexcept {
             float minX = std::min({v0.X, v1.X, v2.X});
             float maxX = std::max({v0.X, v1.X, v2.X});
             float minY = std::min({v0.Y, v1.Y, v2.Y});
@@ -88,9 +88,8 @@ namespace graphics {
             std::int32_t top =
                 std::min(static_cast<std::int32_t>(height) - 1, static_cast<std::int32_t>(std::ceil(maxY)));
 
-            return {static_cast<std::uint32_t>(left), static_cast<std::uint32_t>(right),
-                    static_cast<std::uint32_t>(bottom), static_cast<std::uint32_t>(top),
-                    left <= right && bottom <= top};
+            return {static_cast<std::int32_t>(left), static_cast<std::int32_t>(right),
+                    static_cast<std::int32_t>(bottom), static_cast<std::int32_t>(top), left <= right && bottom <= top};
         }
 
         [[nodiscard]] ENGINE_INLINE std::uint32_t* __restrict GetColor() noexcept { return colors.data(); }

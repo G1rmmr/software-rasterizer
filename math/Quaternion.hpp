@@ -33,59 +33,61 @@ namespace math {
         Quaternion& operator=(const Quaternion&) = default;
         Quaternion& operator=(Quaternion&&) = default;
 
-        ENGINE_INLINE Quaternion& __vectorcall operator+=(const Quaternion& other) noexcept {
+        ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator+=(const Quaternion& other) noexcept {
             Q = simd::Add(Q, other.Q);
             return *this;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall operator+(Quaternion other) const noexcept { return other += *this; }
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL operator+(Quaternion other) const noexcept { return other += *this; }
 
-        ENGINE_INLINE Quaternion& __vectorcall operator-=(const Quaternion& other) noexcept {
+        ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator-=(const Quaternion& other) noexcept {
             Q = simd::Sub(Q, other.Q);
             return *this;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall operator-(Quaternion other) const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL operator-(Quaternion other) const noexcept {
             Quaternion temp(*this);
             return temp -= other;
         }
 
-        ENGINE_INLINE Quaternion& __vectorcall operator*=(const float val) noexcept {
+        ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator*=(const float val) noexcept {
             const simd::Floats temp = simd::Set(val);
             Q = simd::Mul(Q, temp);
             return *this;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall operator*(const float val) const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL operator*(const float val) const noexcept {
             Quaternion result(*this);
             return result *= val;
         }
 
-        ENGINE_INLINE Quaternion& __vectorcall operator/=(const float val) noexcept {
+        ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator/=(const float val) noexcept {
             assert(val != 0.f && "Division by zero!");
             return *this *= 1 / val;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall operator/(const float val) const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL operator/(const float val) const noexcept {
             Quaternion result(*this);
             return result /= val;
         }
 
-        ENGINE_INLINE bool __vectorcall operator==(const Quaternion& other) const noexcept {
+        ENGINE_INLINE bool ENGINE_VECTORCALL operator==(const Quaternion& other) const noexcept {
             return simd::AllClose(Q, other.Q);
         }
-        ENGINE_INLINE bool __vectorcall operator!=(const Quaternion& other) const noexcept {
+        ENGINE_INLINE bool ENGINE_VECTORCALL operator!=(const Quaternion& other) const noexcept {
             return !simd::AllClose(Q, other.Q);
         }
 
-        ENGINE_INLINE Quaternion __vectorcall Reciprocal() const noexcept { return Quaternion(simd::Reciprocal(Q)); }
-        ENGINE_INLINE Quaternion __vectorcall Sqrt() const noexcept { return Quaternion(simd::Sqrt(Q)); }
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Reciprocal() const noexcept {
+            return Quaternion(simd::Reciprocal(Q));
+        }
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Sqrt() const noexcept { return Quaternion(simd::Sqrt(Q)); }
 
-        ENGINE_INLINE float __vectorcall Dot(const Quaternion& other) const noexcept {
+        ENGINE_INLINE float ENGINE_VECTORCALL Dot(const Quaternion& other) const noexcept {
             return simd::GetFirst(simd::HorizonSum<0x71>(Q, other.Q));
         }
 
-        ENGINE_INLINE Quaternion& __vectorcall operator*=(const Quaternion& other) noexcept {
+        ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator*=(const Quaternion& other) noexcept {
             Q = simd::Set(W * other.X + X * other.W + Y * other.Z - Z * other.Y,
                           W * other.Y - X * other.Z + Y * other.W + Z * other.X,
                           W * other.Z + X * other.Y - Y * other.X + Z * other.W,
@@ -94,23 +96,23 @@ namespace math {
             return *this;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall operator*(const Quaternion& other) const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL operator*(const Quaternion& other) const noexcept {
             Quaternion result(*this);
             return result *= other;
         }
 
-        ENGINE_INLINE float __vectorcall Length() const noexcept {
+        ENGINE_INLINE float ENGINE_VECTORCALL Length() const noexcept {
             float dot = Dot(*this);
             return std::sqrt(dot);
         }
 
-        ENGINE_INLINE Quaternion __vectorcall Norm() const noexcept { return *this / Length(); }
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Norm() const noexcept { return *this / Length(); }
 
-        ENGINE_INLINE Quaternion __vectorcall Conjugate() const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Conjugate() const noexcept {
             return Quaternion(simd::Mul(Q, simd::Set(-1.f, -1.f, -1.f, 1.f)));
         }
 
-        ENGINE_INLINE Matrix __vectorcall ToMatrix() const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL ToMatrix() const noexcept {
             const float xx2 = X * X * 2.f;
             const float yy2 = Y * Y * 2.f;
             const float zz2 = Z * Z * 2.f;
@@ -131,7 +133,7 @@ namespace math {
             return result;
         }
 
-        ENGINE_INLINE Quaternion __vectorcall Slerp(const Quaternion& other, const float t) const noexcept {
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Slerp(const Quaternion& other, const float t) const noexcept {
             float cosHalfTheta = simd::GetFirst(simd::HorizonSum<0x71>(Q, other.Q));
 
             Quaternion target = other;

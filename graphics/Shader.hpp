@@ -24,6 +24,17 @@ namespace shader {
         math::Vector Tangent;
         math::Vector Bitangent;
         float RecipW;
+
+        ENGINE_INLINE static Varyings Lerp(const Varyings& v1, const Varyings& v2, float t) {
+            Varyings out;
+            out.Pos = v1.Pos * (1.f - t) + v2.Pos * t;
+            out.WorldPos = v1.WorldPos * (1.f - t) + v2.WorldPos * t;
+            out.Normal = (v1.Normal * (1.f - t) + v2.Normal * t).Norm();
+            out.Color = v1.Color * (1.f - t) + v2.Color * t;
+            out.UV = v1.UV * (1.f - t) + v2.UV * t;
+            out.Tangent = (v1.Tangent * (1.f - t) + v2.Tangent * t).Norm();
+            return out;
+        }
     };
 
     struct Uniforms {
@@ -32,8 +43,9 @@ namespace shader {
         math::Matrix Model;
         math::Matrix View;
         math::Matrix Proj;
-
         math::Matrix LightSpace;
+
+        float DepthBias = 0.0f;
     };
 
     struct Model {
@@ -50,17 +62,18 @@ namespace shader {
         float ShadowMapWidth = 0.f;
         float ShadowMapHeight = 0.f;
 
-        inline math::Vector Vertex(const math::Vector& pos) const {
+        ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const {
             return Uniform.Proj * Uniform.View * Uniform.Model * pos;
         }
 
-        inline math::Vector Normal(const math::Vector& normal) const {
+        ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
             math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
             return n.Norm();
         }
 
-        inline std::uint32_t Color(const math::Vector& color, const math::Vector& normal, const math::Vector& worldPos,
-                                   const math::Vector& uv, const math::Vector& inTangent) const {
+        ENGINE_INLINE std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
+                                          const math::Vector& worldPos, const math::Vector& uv,
+                                          const math::Vector& inTangent) const {
             math::Vector albedo = color;
             if(DiffuseMap) albedo = DiffuseMap->Sample(uv.X, uv.Y);
             if(albedo.W < 0.05f) return 0x00000000;
@@ -131,8 +144,8 @@ namespace shader {
                 simd::Clamp(simd::Mul(finalColor.V, simd::Set(255.f)), simd::Set(0.f), simd::Set(255.f)));
         }
 
-        inline float CalculateShadow(const math::Vector& worldPos, const math::Vector& normal,
-                                     const math::Vector& lightDir) const {
+        ENGINE_INLINE float CalculateShadow(const math::Vector& worldPos, const math::Vector& normal,
+                                            const math::Vector& lightDir) const {
             if(!ShadowMap) return 1.f;
 
             math::Vector lightSpacePos = Uniform.LightSpace * worldPos;
@@ -146,7 +159,10 @@ namespace shader {
                 return 1.f;
 
             float currentDepth = projCoords.Z;
-            float bias = 0.001f;
+
+            float cosTheta = std::abs(normal.Dot(lightDir));
+            float bias = std::max(0.05f * (1.f - cosTheta), 0.005f);
+
             float shadow = 0.f;
 
             float texX = 1.f / ShadowMapWidth;
@@ -182,10 +198,13 @@ namespace shader {
             return shadow * 0.111111f;
         }
 
-        inline Varyings Process(const shader::Vertex& in) const {
+        ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
             Varyings out;
 
-            out.Pos = Vertex(in.Pos);
+            math::Vector clipPos = Vertex(in.Pos);
+            clipPos.Z += Uniform.DepthBias * clipPos.W;
+
+            out.Pos = clipPos;
 
             out.WorldPos = Uniform.Model * in.Pos;
             out.WorldPos.W = 1.f;
@@ -206,19 +225,22 @@ namespace shader {
     struct Shadow {
         Uniforms Uniform;
 
-        inline math::Vector Vertex(const math::Vector& pos) const { return Uniform.LightSpace * Uniform.Model * pos; }
+        ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const {
+            return Uniform.LightSpace * Uniform.Model * pos;
+        }
 
-        inline math::Vector Normal(const math::Vector& normal) const {
+        ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
             math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
             return n.Norm();
         }
 
-        inline std::uint32_t Color(const math::Vector& color, const math::Vector& normal, const math::Vector& worldPos,
-                                   const math::Vector& uv, const math::Vector& inTangent) const {
+        ENGINE_INLINE std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
+                                          const math::Vector& worldPos, const math::Vector& uv,
+                                          const math::Vector& inTangent) const {
             return 0xFFFFFFFF;
         }
 
-        inline Varyings Process(const shader::Vertex& in) const {
+        ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
             Varyings out;
             out.Pos = Vertex(in.Pos);
             return out;

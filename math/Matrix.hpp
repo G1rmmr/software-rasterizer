@@ -52,24 +52,24 @@ namespace math {
         Matrix& operator=(const Matrix&) = default;
         Matrix& operator=(Matrix&&) = default;
 
-        ENGINE_INLINE Matrix& __vectorcall operator+=(const Matrix& other) noexcept {
+        ENGINE_INLINE Matrix& ENGINE_VECTORCALL operator+=(const Matrix& other) noexcept {
             for(std::size_t i = 0; i < 4; ++i) Cols[i] = simd::Add(Cols[i], other.Cols[i]);
             return *this;
         }
 
-        ENGINE_INLINE Matrix __vectorcall operator+(Matrix other) const noexcept { return other += *this; }
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL operator+(Matrix other) const noexcept { return other += *this; }
 
-        ENGINE_INLINE Matrix& __vectorcall operator-=(const Matrix& other) noexcept {
+        ENGINE_INLINE Matrix& ENGINE_VECTORCALL operator-=(const Matrix& other) noexcept {
             for(std::size_t i = 0; i < 4; ++i) Cols[i] = simd::Sub(Cols[i], other.Cols[i]);
             return *this;
         }
 
-        ENGINE_INLINE Matrix __vectorcall operator-(Matrix other) const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL operator-(Matrix other) const noexcept {
             Matrix temp(*this);
             return temp -= other;
         }
 
-        ENGINE_INLINE Matrix& __vectorcall operator*=(const float val) noexcept {
+        ENGINE_INLINE Matrix& ENGINE_VECTORCALL operator*=(const float val) noexcept {
             const simd::Floats temp = simd::Set(val);
 
             for(std::size_t i = 0; i < 4; ++i) Cols[i] = simd::Mul(Cols[i], temp);
@@ -77,12 +77,12 @@ namespace math {
             return *this;
         }
 
-        ENGINE_INLINE Matrix __vectorcall operator*(const float val) const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL operator*(const float val) const noexcept {
             Matrix result(*this);
             return result *= val;
         }
 
-        ENGINE_INLINE Matrix& __vectorcall operator*=(const Matrix& other) noexcept {
+        ENGINE_INLINE Matrix& ENGINE_VECTORCALL operator*=(const Matrix& other) noexcept {
             Matrix original = *this;
 
             for(int i = 0; i < 4; ++i) {
@@ -101,32 +101,32 @@ namespace math {
             return *this;
         }
 
-        ENGINE_INLINE Matrix __vectorcall operator*(const Matrix& other) const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL operator*(const Matrix& other) const noexcept {
             Matrix res{*this};
             return res *= other;
         }
 
-        ENGINE_INLINE Matrix& __vectorcall operator/=(const float val) noexcept {
+        ENGINE_INLINE Matrix& ENGINE_VECTORCALL operator/=(const float val) noexcept {
             assert(val != 0.f && "Division by zero!");
             return *this *= 1 / val;
         }
 
-        ENGINE_INLINE Matrix __vectorcall operator/(const float val) const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL operator/(const float val) const noexcept {
             Matrix result(*this);
             return result /= val;
         }
 
-        ENGINE_INLINE bool __vectorcall operator==(const Matrix& other) const noexcept {
+        ENGINE_INLINE bool ENGINE_VECTORCALL operator==(const Matrix& other) const noexcept {
             return simd::AllClose(Cols[0], other.Cols[0]) && simd::AllClose(Cols[1], other.Cols[1]) &&
                    simd::AllClose(Cols[2], other.Cols[2]) && simd::AllClose(Cols[3], other.Cols[3]);
         }
 
-        ENGINE_INLINE bool __vectorcall operator!=(const Matrix& other) const noexcept {
+        ENGINE_INLINE bool ENGINE_VECTORCALL operator!=(const Matrix& other) const noexcept {
             return !(simd::AllClose(Cols[0], other.Cols[0]) && simd::AllClose(Cols[1], other.Cols[1]) &&
                      simd::AllClose(Cols[2], other.Cols[2]) && simd::AllClose(Cols[3], other.Cols[3]));
         }
 
-        ENGINE_INLINE Matrix __vectorcall Reciprocal() const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL Reciprocal() const noexcept {
             Matrix mat;
 
             for(std::size_t i = 0; i < 4; ++i) mat.Cols[i] = simd::Reciprocal(Cols[i]);
@@ -134,7 +134,7 @@ namespace math {
             return mat;
         }
 
-        ENGINE_INLINE Matrix __vectorcall Sqrt() const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL Sqrt() const noexcept {
             Matrix mat;
 
             for(std::size_t i = 0; i < 4; ++i) mat.Cols[i] = simd::Sqrt(Cols[i]);
@@ -142,7 +142,7 @@ namespace math {
             return mat;
         }
 
-        ENGINE_INLINE Matrix __vectorcall Transpose() const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL Transpose() const noexcept {
             Matrix orig = *this;
 
             simd::Floats tmp0 = simd::UnpackLow(orig.Cols[0], orig.Cols[1]);
@@ -158,7 +158,7 @@ namespace math {
             return orig;
         }
 
-        ENGINE_INLINE Matrix __vectorcall Inv() const noexcept {
+        ENGINE_INLINE Matrix ENGINE_VECTORCALL Inv() const noexcept {
             simd::Floats a = simd::PackLowHigh(Cols[0], Cols[1]);
             simd::Floats b = simd::PackHighLow(Cols[0], Cols[1]);
             simd::Floats c = simd::PackLowHigh(Cols[2], Cols[3]);
@@ -193,37 +193,38 @@ namespace math {
             detM = simd::Sub(detM, tr);
 
             const simd::Floats adjSign = simd::Set(1.f, -1.f, -1.f, 1.f);
-            const simd::Floats recDetM = simd::Mul(adjSign, detM);
+            const simd::Floats rDetM = simd::Div(adjSign, detM);
 
-            x = simd::Mul(x, recDetM);
-            y = simd::Mul(y, recDetM);
-            z = simd::Mul(z, recDetM);
-            w = simd::Mul(w, recDetM);
+            x = simd::Mul(x, rDetM);
+            y = simd::Mul(y, rDetM);
+            z = simd::Mul(z, rDetM);
+            w = simd::Mul(w, rDetM);
 
-            Matrix result;
+            Matrix res;
+            res.Cols[0] = simd::Shuffle<rightMask>(x, y);
+            res.Cols[1] = simd::Shuffle<leftMask>(x, y);
+            res.Cols[2] = simd::Shuffle<rightMask>(z, w);
+            res.Cols[3] = simd::Shuffle<leftMask>(z, w);
 
-            result.Cols[0] = simd::Shuffle<rightMask>(x, y);
-            result.Cols[1] = simd::Shuffle<leftMask>(x, y);
-            result.Cols[2] = simd::Shuffle<rightMask>(z, w);
-            result.Cols[3] = simd::Shuffle<leftMask>(z, w);
-
-            return result;
+            return res;
         }
 
     private:
-        ENGINE_INLINE simd::Floats __vectorcall mul2(const simd::Floats v1, const simd::Floats v2) const noexcept {
+        ENGINE_INLINE simd::Floats ENGINE_VECTORCALL mul2(const simd::Floats v1, const simd::Floats v2) const noexcept {
             return simd::Add(
                 simd::Mul(v1, simd::Swizzle<SIMD_MASK(0, 3, 0, 3)>(v2)),
                 simd::Mul(simd::Swizzle<SIMD_MASK(1, 0, 3, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 1, 2, 1)>(v2)));
         }
 
-        ENGINE_INLINE simd::Floats __vectorcall adjMul2(const simd::Floats v1, const simd::Floats v2) const noexcept {
+        ENGINE_INLINE simd::Floats ENGINE_VECTORCALL adjMul2(const simd::Floats v1,
+                                                             const simd::Floats v2) const noexcept {
             return simd::Sub(
                 simd::Mul(simd::Swizzle<SIMD_MASK(3, 3, 0, 0)>(v1), v2),
                 simd::Mul(simd::Swizzle<SIMD_MASK(1, 1, 2, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 3, 0, 1)>(v2)));
         }
 
-        ENGINE_INLINE simd::Floats __vectorcall mulAdj2(const simd::Floats v1, const simd::Floats v2) const noexcept {
+        ENGINE_INLINE simd::Floats ENGINE_VECTORCALL mulAdj2(const simd::Floats v1,
+                                                             const simd::Floats v2) const noexcept {
             return simd::Sub(
                 simd::Mul(v1, simd::Swizzle<SIMD_MASK(3, 0, 3, 0)>(v2)),
                 simd::Mul(simd::Swizzle<SIMD_MASK(1, 0, 3, 2)>(v1), simd::Swizzle<SIMD_MASK(2, 1, 2, 1)>(v2)));
