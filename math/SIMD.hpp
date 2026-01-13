@@ -56,8 +56,8 @@ namespace simd {
         return v;
 
 #elif defined(ENGINE_SIMD_NEON)
-        if constexpr (is_same<To, Floats>::value) return vreinterpretq_f32_u32((Uint32x4)v);
-        if constexpr (is_same<From, Floats>::value) return (To)vreinterpretq_u32_f32(v);
+        if constexpr(is_same<To, Floats>::value) return vreinterpretq_f32_u32((Uint32x4)v);
+        if constexpr(is_same<From, Floats>::value) return (To)vreinterpretq_u32_f32(v);
         return (To)v;
 #endif
     }

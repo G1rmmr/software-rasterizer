@@ -21,8 +21,8 @@ namespace preferences {
     const char* WINDOW_TITLE = "software-rasterizer";
     constexpr inline std::uint32_t COLOR = 0xFF000000;
 
-    constexpr inline std::uint32_t WIDTH = 800;
-    constexpr inline std::uint32_t HEIGHT = 450;
+    constexpr inline std::uint32_t WIDTH = 1280;
+    constexpr inline std::uint32_t HEIGHT = 720;
 
     constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
     constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;

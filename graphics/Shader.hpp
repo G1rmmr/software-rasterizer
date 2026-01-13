@@ -68,26 +68,25 @@ namespace shader {
             float specIntensity = 0.f;
             if(SpecularMap) specIntensity = SpecularMap->Sample(uv.X, uv.Y).X;
 
-            math::Vector normDir = normal.Norm();
+            math::Vector normDir = normal;
             if(NormalMap) {
-                math::Vector norm = normal.Norm();
-                math::Vector tangent = math::Vector(inTangent.X, inTangent.Y, inTangent.Z, 0.f).Norm();
+                math::Vector tangent = math::Vector(inTangent.X, inTangent.Y, inTangent.Z, 0.f);
 
-                tangent = (tangent - norm * norm.Dot(tangent)).Norm();
+                tangent = (tangent - normDir * normDir.Dot(tangent)).Norm();
 
-                math::Vector bitangent = norm.Cross(tangent).Norm() * inTangent.W;
+                math::Vector bitangent = normDir.Cross(tangent).Norm() * inTangent.W;
                 math::Vector mapNormal = NormalMap->Sample(uv.X, uv.Y);
                 mapNormal = mapNormal * 2.f - 1.f;
 
                 mapNormal.Y = -mapNormal.Y;
 
                 math::Vector transformedNormal =
-                    (tangent * mapNormal.X) + (bitangent * mapNormal.Y) + (norm * mapNormal.Z);
+                    (tangent * mapNormal.X) + (bitangent * mapNormal.Y) + (normDir * mapNormal.Z);
 
                 normDir = transformedNormal.Norm();
             }
 
-            math::Vector lightDir = Uniform.LightDir.Norm();
+            math::Vector lightDir = Uniform.LightDir;
             float shadow = CalculateShadow(worldPos, normDir, lightDir);
 
             float diff = std::max(normDir.Dot(lightDir), 0.f) * shadow;
@@ -148,27 +147,39 @@ namespace shader {
 
             float currentDepth = projCoords.Z;
             float bias = 0.001f;
-
             float shadow = 0.f;
 
-            math::Vector texelSize = {1.f / ShadowMapWidth, 1.f / ShadowMapHeight, 0.f, 0.f};
+            float texX = 1.f / ShadowMapWidth;
+            float texY = 1.f / ShadowMapHeight;
 
-            for(int x = -1; x <= 1; ++x) {
-                for(int y = -1; y <= 1; ++y) {
-                    float pcfDepth = 1.f;
+            std::uint16_t iWidth = static_cast<std::uint16_t>(ShadowMapWidth);
+            std::uint16_t iHeight = static_cast<std::uint16_t>(ShadowMapHeight);
 
-                    int pcfX = static_cast<int>((projCoords.X + x * texelSize.X) * ShadowMapWidth);
-                    int pcfY = static_cast<int>((projCoords.Y + y * texelSize.Y) * ShadowMapHeight);
+            std::int32_t baseX = static_cast<std::int32_t>(projCoords.X * ShadowMapWidth);
+            std::int32_t baseY = static_cast<std::int32_t>(projCoords.Y * ShadowMapHeight);
 
-                    if(pcfX >= 0 && pcfX < (int)ShadowMapWidth && pcfY >= 0 && pcfY < (int)ShadowMapHeight) {
-                        pcfDepth = (*ShadowMap)[pcfY * (int)ShadowMapWidth + pcfX];
-                    }
+            auto checkDepth = [&](std::int32_t ox, std::int32_t oy) {
+                std::int32_t px = baseX + ox;
+                std::int32_t py = baseY + oy;
 
-                    shadow += (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
+                if(px >= 0 && px < iWidth && py >= 0 && py < iHeight) {
+                    float pcfDepth = (*ShadowMap)[py * iWidth + px];
+                    return (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
                 }
-            }
+                return 1.f;
+            };
 
-            return shadow / 9.f;
+            shadow += checkDepth(-1, -1);
+            shadow += checkDepth(0, -1);
+            shadow += checkDepth(1, -1);
+            shadow += checkDepth(-1, 0);
+            shadow += checkDepth(0, 0);
+            shadow += checkDepth(1, 0);
+            shadow += checkDepth(-1, 1);
+            shadow += checkDepth(0, 1);
+            shadow += checkDepth(1, 1);
+
+            return shadow * 0.111111f;
         }
 
         inline Varyings Process(const shader::Vertex& in) const {

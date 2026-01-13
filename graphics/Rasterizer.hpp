@@ -6,6 +6,7 @@
 
 #include "../math/Math.hpp"
 #include "FrameBuffer.hpp"
+#include "ParallelExecutor.hpp"
 #include "Shader.hpp"
 
 namespace graphics {
@@ -32,10 +33,9 @@ namespace graphics {
                            const std::vector<std::uint32_t>& indices,
                            const PrimitiveType type = PrimitiveType::Triangles, std::size_t maxIndices = 0) {
             std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size()) ? indices.size() : maxIndices;
+            std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
 
             std::vector<shader::Varyings> screenVertices = processVertices<Shader>(shader, vertices);
-
-            std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
             dispatchPrimitives<Shader>(shader, screenVertices, limitedIndices, type);
         }
 
@@ -48,25 +48,25 @@ namespace graphics {
 
             const int THRESHOLD = 30;
 
-            for(std::uint32_t y = 1; y < h - 1; ++y) {
-                for(std::uint32_t x = 1; x < w - 1; ++x) {
-                    std::uint32_t idx = y * w + x;
-                    std::uint32_t current = src[idx];
+            ParallelExecutor::GetInstance().ParallelFor(
+                1, h - 1,
+                [&](size_t y) {
+                    for(std::uint32_t x = 1; x < w - 1; ++x) {
+                        std::uint32_t idx = y * w + x;
+                        std::uint32_t current = src[idx];
 
-                    std::uint32_t up = src[idx - w];
-                    std::uint32_t down = src[idx + w];
-                    std::uint32_t left = src[idx - 1];
-                    std::uint32_t right = src[idx + 1];
+                        std::uint32_t up = src[idx - w];
+                        std::uint32_t down = src[idx + w];
+                        std::uint32_t left = src[idx - 1];
+                        std::uint32_t right = src[idx + 1];
 
-                    int diff = colorDiff(current, up) + colorDiff(current, down) + colorDiff(current, left) +
-                               colorDiff(current, right);
+                        int diff = colorDiff(current, up) + colorDiff(current, down) + colorDiff(current, left) +
+                                   colorDiff(current, right);
 
-                    if(diff > THRESHOLD) {
-                        dest[idx] = mixColors(current, up, down, left, right);
+                        if(diff > THRESHOLD) dest[idx] = mixColors(current, up, down, left, right);
                     }
-                }
-            }
-
+                },
+                16);
             frame.UpdateBuffer(dest);
         }
 
@@ -79,30 +79,97 @@ namespace graphics {
         template <typename Shader>
         inline std::vector<shader::Varyings> processVertices(const Shader& shader,
                                                              const std::vector<shader::Vertex>& in) {
-            std::vector<shader::Varyings> out(in.size());
+            const std::size_t inSize = in.size();
+            std::vector<shader::Varyings> out(inSize);
 
-            for(size_t i = 0; i < in.size(); ++i) {
-                out[i] = shader.Process(in[i]);
+            ParallelExecutor::GetInstance().ParallelFor(
+                0, inSize,
+                [&](std::size_t i) {
+                    out[i] = shader.Process(in[i]);
 
-                float w = out[i].Pos.W;
-                if(std::abs(w) < 1e-6f) w = 1e-6f;
+                    float w = out[i].Pos.W;
+                    if(std::abs(w) < 1e-6f) w = 1e-6f;
 
-                float rhw = 1.f / w;
-                out[i].Pos.X = (out[i].Pos.X * rhw + 1.f) * width * 0.5f;
-                out[i].Pos.Y = (1.f - out[i].Pos.Y * rhw) * height * 0.5f;
-                out[i].Pos.Z = out[i].Pos.Z * rhw;
-                out[i].Pos.W = rhw;
-                out[i].RecipW = rhw;
-            }
+                    float rhw = 1.f / w;
+                    out[i].Pos.X = (out[i].Pos.X * rhw + 1.f) * width * 0.5f;
+                    out[i].Pos.Y = (1.f - out[i].Pos.Y * rhw) * height * 0.5f;
+                    out[i].Pos.Z = out[i].Pos.Z * rhw;
+                    out[i].Pos.W = rhw;
+                    out[i].RecipW = rhw;
+                },
+                256);
             return out;
         }
 
+        template <typename Shader>
+        inline void dispatchPrimitives(const Shader& shader, const std::vector<shader::Varyings>& varyings,
+                                       const std::vector<std::uint32_t>& indices,
+                                       const PrimitiveType type = PrimitiveType::Triangles) {
+            switch(type) {
+            case PrimitiveType::Points: {
+                const std::size_t pointCount = indices.size();
+
+                ParallelExecutor::GetInstance().ParallelFor(
+                    0, pointCount,
+                    [&](std::size_t i) {
+                        if(indices[i] >= varyings.size()) return;
+                        drawPoint(shader, varyings[indices[i]]);
+                    },
+                    256);
+                return;
+            }
+
+            case PrimitiveType::Lines: {
+                const std::size_t lineCount = indices.size() / 2;
+
+                ParallelExecutor::GetInstance().ParallelFor(
+                    0, lineCount,
+                    [&](std::size_t i) {
+                        const std::size_t idx = i * 3;
+                        if(idx + 2 >= indices.size()) return;
+
+                        const shader::Varyings& v0 = varyings[indices[idx]];
+                        const shader::Varyings& v1 = varyings[indices[idx + 1]];
+                        const shader::Varyings& v2 = varyings[indices[idx + 2]];
+
+                        drawLine(shader, v0, v1);
+                        drawLine(shader, v1, v2);
+                        drawLine(shader, v2, v0);
+                    },
+                    256);
+                return;
+            }
+
+            default: {
+                const std::size_t triangleCount = indices.size() / 3;
+
+                ParallelExecutor::GetInstance().ParallelFor(
+                    0, triangleCount,
+                    [&](std::size_t i) {
+                        const std::size_t idx = i * 3;
+                        if(idx + 2 >= indices.size()) return;
+
+                        const shader::Varyings& v0 = varyings[indices[idx]];
+                        const shader::Varyings& v1 = varyings[indices[idx + 1]];
+                        const shader::Varyings& v2 = varyings[indices[idx + 2]];
+
+                        this->drawTriangle(shader, v0, v1, v2);
+                    },
+                    64);
+                return;
+            }
+            }
+        }
+
         template <typename Shader> inline void drawPoint(const Shader& shader, const shader::Varyings& v) {
-            int x = static_cast<int>(std::round(v.Pos.X));
-            int y = static_cast<int>(std::round(v.Pos.Y));
+            std::int32_t x = static_cast<std::int32_t>(std::round(v.Pos.X));
+            std::int32_t y = static_cast<std::int32_t>(std::round(v.Pos.Y));
 
             if(frame.TestDepth(x, y, v.Pos.Z)) {
-                frame.SetPixel(x, y, shader.Color(v.Color, v.Normal, v.WorldPos, v.UV, v.Tangent));
+                simd::Floats colorV = v.Color.V;
+
+                colorV = simd::Mul(colorV, simd::Set(255.f));
+                frame.SetPixel(x, y, simd::PackRGBA(colorV));
             }
         }
 
@@ -129,15 +196,11 @@ namespace graphics {
                               : std::sqrt(std::pow(x0 - startX, 2) + std::pow(y0 - startY, 2)) / totalDist;
 
                 float z = v0.Pos.Z * (1.f - t) + v1.Pos.Z * t;
-
                 math::Vector color = v0.Color * (1.f - t) + v1.Color * t;
-                math::Vector normal = v0.Normal * (1.f - t) + v1.Normal * t;
-                math::Vector worldPos = v0.WorldPos * (1.f - t) + v1.WorldPos * t;
-                math::Vector uv = v0.UV * (1.f - t) + v1.UV * t;
-                math::Vector tangent = v0.Tangent * (1.f - t) + v1.Tangent * t;
 
                 if(frame.TestDepth(x0, y0, z)) {
-                    frame.SetPixel(x0, y0, shader.Color(color, normal, worldPos, uv, tangent));
+                    simd::Floats colorV = simd::Mul(color.V, simd::Set(255.f));
+                    frame.SetPixel(x0, y0, simd::PackRGBA(colorV));
                 }
 
                 if(x0 == x1 && y0 == y1) break;
@@ -156,120 +219,89 @@ namespace graphics {
             }
         }
 
+        inline float edge(const math::Vector& a, const math::Vector& b, const math::Vector& c) {
+            return (c.X - a.X) * (b.Y - a.Y) - (c.Y - a.Y) * (b.X - a.X);
+        }
+
+        // Pineda + edge
         template <typename Shader>
         inline void drawTriangle(const Shader& shader, const shader::Varyings& v0, const shader::Varyings& v1,
                                  const shader::Varyings& v2) {
-            if(v0.RecipW < 0 || v1.RecipW < 0 || v2.RecipW < 0) return;
+            const float area = edge(v0.Pos, v1.Pos, v2.Pos);
+            if(area <= 0.f) return;
 
-            const float area =
-                (v1.Pos.X - v0.Pos.X) * (v2.Pos.Y - v0.Pos.Y) - (v1.Pos.Y - v0.Pos.Y) * (v2.Pos.X - v0.Pos.X);
-
-            if(area > 0.f) return;
+            const float invArea = 1.f / area;
 
             BoundingBox bound = frame.GetBound(v0.Pos, v1.Pos, v2.Pos);
             if(!bound.ShouldRender) return;
 
+            float row0 =
+                edge(v1.Pos, v2.Pos,
+                     math::Vector(static_cast<float>(bound.MinX) + 0.5f, static_cast<float>(bound.MinY) + 0.5f, 0.f));
+
+            float row1 =
+                edge(v2.Pos, v0.Pos,
+                     math::Vector(static_cast<float>(bound.MinX) + 0.5f, static_cast<float>(bound.MinY) + 0.5f, 0.f));
+
+            float row2 =
+                edge(v0.Pos, v1.Pos,
+                     math::Vector(static_cast<float>(bound.MinX) + 0.5f, static_cast<float>(bound.MinY) + 0.5f, 0.f));
+
+            const float dx0 = v2.Pos.Y - v1.Pos.Y;
+            const float dy0 = v1.Pos.X - v2.Pos.X;
+
+            const float dx1 = v0.Pos.Y - v2.Pos.Y;
+            const float dy1 = v2.Pos.X - v0.Pos.X;
+
+            const float dx2 = v1.Pos.Y - v0.Pos.Y;
+            const float dy2 = v0.Pos.X - v1.Pos.X;
+
             for(int y = bound.MinY; y <= bound.MaxY; ++y) {
+                float w0 = row0;
+                float w1 = row1;
+                float w2 = row2;
+
                 for(int x = bound.MinX; x <= bound.MaxX; ++x) {
-                    const math::Vector currPos(static_cast<float>(x), static_cast<float>(y), 0.f);
-                    math::Vector bary = math::GetBarycentric(currPos, v0.Pos, v1.Pos, v2.Pos);
+                    if((static_cast<int>(w0) | static_cast<int>(w1) | static_cast<int>(w2)) >= 0) {
+                        const float b0 = w0 * invArea;
+                        const float b1 = w1 * invArea;
+                        const float b2 = w2 * invArea;
 
-                    if(bary.X < 0 || bary.Y < 0 || bary.Z < 0) continue;
+                        const float interpolatedRecipW = (v0.RecipW * b0) + (v1.RecipW * b1) + (v2.RecipW * b2);
+                        const float w = 1.f / interpolatedRecipW;
+                        const float z = (v0.Pos.Z * b0) + (v1.Pos.Z * b1) + (v2.Pos.Z * b2);
 
-                    float interpolatedRecipW = (v0.RecipW * bary.X) + (v1.RecipW * bary.Y) + (v2.RecipW * bary.Z);
-                    float w = 1.f / interpolatedRecipW;
+                        if(frame.TestDepth(x, y, z)) {
+                            auto interpolate = [&](const math::Vector& a, const math::Vector& b,
+                                                   const math::Vector& c) {
+                                return ((a * v0.RecipW * b0) + (b * v1.RecipW * b1) + (c * v2.RecipW * b2)) * w;
+                            };
 
-                    float z = v0.Pos.Z * bary.X + v1.Pos.Z * bary.Y + v2.Pos.Z * bary.Z;
-                    if(frame.TestDepth(x, y, z)) {
-                        auto perspectiveInterpolate = [&](const math::Vector& a0, const math::Vector& a1,
-                                                          const math::Vector& a2) {
-                            return ((a0 * v0.RecipW * bary.X) + (a1 * v1.RecipW * bary.Y) + (a2 * v2.RecipW * bary.Z)) *
-                                   w;
-                        };
+                            const math::Vector worldPos = interpolate(v0.WorldPos, v1.WorldPos, v2.WorldPos);
+                            const math::Vector normal = interpolate(v0.Normal, v1.Normal, v2.Normal).Norm();
+                            const math::Vector uv = interpolate(v0.UV, v1.UV, v2.UV);
+                            const math::Vector tangent = interpolate(v0.Tangent, v1.Tangent, v2.Tangent).Norm();
+                            const math::Vector color = interpolate(v0.Color, v1.Color, v2.Color);
 
-                        const math::Vector worldPos =
-                            (v0.WorldPos * bary.X) + (v1.WorldPos * bary.Y) + (v2.WorldPos * bary.Z);
-
-                        math::Vector interpolatedNormal =
-                            (v0.Normal * bary.X) + (v1.Normal * bary.Y) + (v2.Normal * bary.Z);
-
-                        const float lenSq = interpolatedNormal.Dot(interpolatedNormal);
-                        if(lenSq > 1e-8f) interpolatedNormal *= (1.f / std::sqrt(lenSq));
-
-                        const math::Vector interpolatedColor =
-                            (v0.Color * bary.X) + (v1.Color * bary.Y) + (v2.Color * bary.Z);
-
-                        math::Vector interpolatedUV = (v0.UV * bary.X) + (v1.UV * bary.Y) + (v2.UV * bary.Z);
-
-                        math::Vector interpTangent =
-                            (v0.Tangent * bary.X) + (v1.Tangent * bary.Y) + (v2.Tangent * bary.Z);
-
-                        std::uint32_t pixelColor = shader.Color(interpolatedColor, interpolatedNormal, worldPos,
-                                                                interpolatedUV, interpTangent);
-
-                        std::uint32_t alpha = (pixelColor >> 24) & 0xFF;
-                        if(alpha == 0) continue;
-
-                        if(alpha < 255) {
-                            std::uint32_t dstColor = frame.GetPixel(x, y);
-                            std::uint32_t blendedColor = alphaBlend(pixelColor, dstColor);
-                            frame.SetPixel(x, y, blendedColor);
-                        }
-                        else {
-                            frame.SetPixel(x, y, pixelColor);
-                            frame.SetDepth(x, y, z);
+                            const std::uint32_t pixelColor = shader.Color(color, normal, worldPos, uv, tangent);
+                            const std::uint32_t alpha = (pixelColor >> 24) & 0xFF;
+                            if(alpha == 255) {
+                                frame.SetPixel(x, y, pixelColor);
+                                frame.SetDepth(x, y, z);
+                            }
+                            else if(alpha > 0) {
+                                const std::uint32_t dstColor = frame.GetPixel(x, y);
+                                frame.SetPixel(x, y, alphaBlend(pixelColor, dstColor));
+                            }
                         }
                     }
+                    w0 += dx0;
+                    w1 += dx1;
+                    w2 += dx2;
                 }
-            }
-        }
-
-        template <typename Shader>
-        inline void dispatchPrimitives(const Shader& shader, const std::vector<shader::Varyings>& varyings,
-                                       const std::vector<std::uint32_t>& indices,
-                                       const PrimitiveType type = PrimitiveType::Triangles) {
-            switch(type) {
-            case PrimitiveType::Points:
-                for(std::size_t index : indices) {
-                    if(index >= varyings.size()) continue;
-
-                    drawPoint(shader, varyings[index]);
-                }
-                break;
-
-            case PrimitiveType::Lines:
-                for(std::size_t i = 0; i < indices.size(); i += 3) {
-                    if(i + 2 >= indices.size()) break;
-
-                    if(indices[i] >= varyings.size() || indices[i + 1] >= varyings.size() ||
-                       indices[i + 2] >= varyings.size())
-                        continue;
-
-                    const shader::Varyings& v0 = varyings[indices[i]];
-                    const shader::Varyings& v1 = varyings[indices[i + 1]];
-                    const shader::Varyings& v2 = varyings[indices[i + 2]];
-
-                    drawLine(shader, v0, v1);
-                    drawLine(shader, v1, v2);
-                    drawLine(shader, v2, v0);
-                }
-                break;
-
-            default:
-                for(std::size_t i = 0; i < indices.size(); i += 3) {
-                    if(i + 2 >= indices.size()) break;
-
-                    if(indices[i] >= varyings.size() || indices[i + 1] >= varyings.size() ||
-                       indices[i + 2] >= varyings.size())
-                        continue;
-
-                    const shader::Varyings& v0 = varyings[indices[i]];
-                    const shader::Varyings& v1 = varyings[indices[i + 1]];
-                    const shader::Varyings& v2 = varyings[indices[i + 2]];
-
-                    drawTriangle(shader, v0, v1, v2);
-                }
-                break;
+                row0 += dy0;
+                row1 += dy1;
+                row2 += dy2;
             }
         }
 
