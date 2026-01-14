@@ -13,9 +13,9 @@ namespace graphics {
     enum class PrimitiveType { Points, Lines, Triangles };
 
     constexpr std::int32_t AO_KERNEL_SIZE = 16;
-    constexpr float AO_RADIUS = 2.f;
-    constexpr float AO_BIAS = 0.0001f;
-    constexpr float AO_STRENGTH = 1.f;
+    constexpr float AO_RADIUS = 15.f;
+    constexpr float AO_BIAS = 0.02f;
+    constexpr float AO_STRENGTH = 1.2f;
 
     class Rasterizer {
     public:
@@ -83,114 +83,101 @@ namespace graphics {
         }
 
         // SSAO
-        void ApplySSAO(const shader::Uniforms& uniform, const float near, const float far) {
+        ENGINE_INLINE void ApplySSAO(const shader::Uniforms& uniform, const float near, const float far) {
             std::uint32_t w = frame.GetWidth();
             std::uint32_t h = frame.GetHeight();
 
             const float* __restrict depthBuffer = frame.GetDepth();
             std::uint32_t* __restrict colorBuffer = frame.GetColor();
-
             std::vector<std::uint32_t> temp = frame.GetColors();
             std::uint32_t* __restrict dst = temp.data();
 
-            float tanHalfFov = 1.f / uniform.Proj[0][0];
-            float aspect = uniform.Proj[1][1] / uniform.Proj[0][0];
-
-            static std::vector<math::Vector> noise;
-            if(noise.empty()) {
-                noise.resize(16);
-                for(std::size_t i = 0; i < 16; ++i) {
-                    float r1 = math::RandomFloat(-1.f, 1.f);
-                    float r2 = math::RandomFloat(-1.f, 1.f);
-                    noise[i] = math::Vector(r1, r2, 0.f, 0.f).Norm();
-                }
-            }
-
-            static std::vector<math::Vector> kernel(AO_KERNEL_SIZE);
-            if(kernel.empty()) {
-                kernel.resize(AO_KERNEL_SIZE);
-                for(std::int32_t i = 0; i < AO_KERNEL_SIZE; ++i) {
-                    const float r1 = math::RandomFloat(-1.f, 1.f);
-                    const float r2 = math::RandomFloat(-1.f, 1.f);
-                    const float r3 = math::RandomFloat(-1.f, 1.f);
-
-                    math::Vector v = math::Vector(r1, r2, r3, 0.f).Norm();
-                    float scale = static_cast<float>(i) / AO_KERNEL_SIZE;
-                    scale = 0.1f + (scale * scale) * 0.9f;
-                    kernel[i] = v * scale;
-                }
-            }
-
             math::Matrix invProj = uniform.Proj.Inv();
+
+            static std::vector<std::pair<float, float>> spiralKernel;
+            if(spiralKernel.empty()) {
+                spiralKernel.resize(AO_KERNEL_SIZE);
+                for(int i = 0; i < AO_KERNEL_SIZE; ++i) {
+                    float angle = 2.4f * i;
+                    float radius = std::sqrt((float)i / AO_KERNEL_SIZE);
+                    spiralKernel[i] = {std::cos(angle) * radius, std::sin(angle) * radius};
+                }
+            }
+
+            static std::vector<float> randomAngles;
+            if(randomAngles.empty()) {
+                randomAngles.resize(16);
+                for(float& ang : randomAngles) ang = math::RandomFloat(0.f, 6.28f);
+            }
 
             ParallelExecutor::GetInstance().ParallelFor(
                 0, h,
                 [&](std::int32_t y) {
                     for(std::int32_t x = 0; x < w; ++x) {
                         std::int32_t idx = y * w + x;
-                        float depth = depthBuffer[idx];
-                        if(depth >= 1.f - 1e-5f) continue;
+                        float currentDepthRaw = depthBuffer[idx];
 
-                        float uvX = (x + 0.5f) / static_cast<float>(h);
-                        float uvY = (y + 0.5f) / static_cast<float>(w);
-
-                        float ndcX = uvX * 2.f - 1.f;
-                        float ndcY = 1.f - uvY * 2.f;
-                        float ndcZ = depth * 2.f - 1.f;
-
-                        math::Vector viewPosRaw = invProj * math::Vector(ndcY, ndcX, ndcZ, 1.f);
-                        math::Vector viewPos = viewPosRaw / viewPosRaw.W;
-
-                        float currentPixelDepth = -viewPos.Z;
-
-                        std::int32_t noiseIdx = ((y % 4) * 4) + (x % 4);
-                        math::Vector randomVec = noise[noiseIdx];
-
-                        float occlusion = 0.f;
-                        for(std::int32_t i = 0; i < AO_KERNEL_SIZE; ++i) {
-                            math::Vector k = kernel[i];
-                            math::Vector rotatedKernel;
-                            rotatedKernel.X = k.X * randomVec.X - k.Y * randomVec.Y;
-                            rotatedKernel.Y = k.X * randomVec.Y + k.Y * randomVec.X;
-                            rotatedKernel.Z = k.Z;
-
-                            math::Vector samplePos = viewPos + (rotatedKernel * AO_RADIUS);
-                            math::Vector offset =
-                                uniform.Proj * math::Vector{samplePos.X, samplePos.Y, samplePos.Z, 1.f};
-
-                            float sNDCX = (offset.X / offset.W) * 0.5f + 0.5f;
-                            float sNDCY = (offset.Y / offset.W) * 0.5f + 0.5f;
-                            std::int32_t sX = static_cast<std::int32_t>(sNDCX * w);
-                            std::int32_t sY = static_cast<std::int32_t>(sNDCY * h);
-
-                            if(sX < 0 || sX >= static_cast<std::int32_t>(w) || sY < 0 ||
-                               sY >= static_cast<std::int32_t>(h))
-                                continue;
-
-                            float actDepthRaw = depthBuffer[sY * w + sX];
-
-                            math::Vector actClipPos(sNDCX, sNDCY, actDepthRaw * 2.f - 1.f, 1.f);
-                            math::Vector actViewPosRaw = invProj * actClipPos;
-                            math::Vector actViewPos = actViewPosRaw / actViewPosRaw.W;
-
-                            if(actViewPos.Z > samplePos.Z + AO_BIAS) {
-                                float dist = std::abs(viewPos.Z - actViewPos.Z);
-                                if(dist < AO_RADIUS) occlusion += 1.f;
-                            }
+                        if(currentDepthRaw >= 1.f - 1e-5f) {
+                            dst[idx] = colorBuffer[idx];
+                            continue;
                         }
 
-                        occlusion = std::clamp(1.f - (occlusion / AO_KERNEL_SIZE) * AO_STRENGTH, 0.f, 1.f);
+                        float uvX = (x + 0.5f) / static_cast<float>(w);
+                        float uvY = (y + 0.5f) / static_cast<float>(h);
+
+                        math::Vector clipPos(uvX * 2.f - 1.f, 1.f - uvY * 2.f, currentDepthRaw * 2.f - 1.f, 1.f);
+                        math::Vector viewPosRaw = invProj * clipPos;
+                        math::Vector viewPos = viewPosRaw / viewPosRaw.W;
+
+                        float depth = -viewPos.Z;
+
+                        float pixelRadius = (AO_RADIUS / depth);
+                        pixelRadius = std::clamp(pixelRadius, 2.f, AO_RADIUS);
+
+                        int noiseIdx = ((y % 4) * 4) + (x % 4);
+                        float rotAngle = randomAngles[noiseIdx];
+                        float cosA = std::cos(rotAngle);
+                        float sinA = std::sin(rotAngle);
+
+                        float occlusion = 0.f;
+
+                        for(const auto& k : spiralKernel) {
+                            float rotatedX = k.first * cosA - k.second * sinA;
+                            float rotatedY = k.first * sinA + k.second * cosA;
+
+                            int sX = x + static_cast<int>(rotatedX * pixelRadius);
+                            int sY = y + static_cast<int>(rotatedY * pixelRadius);
+
+                            if(sX < 0 || sX >= (int)w || sY < 0 || sY >= (int)h) continue;
+
+                            float neighborDepthRaw = depthBuffer[sY * w + sX];
+
+                            float nUvX = (sX + 0.5f) / static_cast<float>(w);
+                            float nUvY = (sY + 0.5f) / static_cast<float>(h);
+
+                            math::Vector nClipPos(nUvX * 2.f - 1.f, 1.f - nUvY * 2.f, neighborDepthRaw * 2.f - 1.f,
+                                                  1.f);
+                            math::Vector nViewPosRaw = invProj * nClipPos;
+                            float neighborDepth = -(nViewPosRaw.Z / nViewPosRaw.W);
+
+                            float rangeCheck = std::abs(depth - neighborDepth) < 1.f ? 1.f : 0.f;
+
+                            if(neighborDepth < depth - AO_BIAS) occlusion += 1.f * rangeCheck;
+                        }
+
+                        float ao = 1.f - (occlusion / AO_KERNEL_SIZE);
+                        ao = std::pow(ao, AO_STRENGTH);
 
                         std::uint32_t c = colorBuffer[idx];
-                        std::uint8_t a = (c >> 24) & 0xFF;
-                        std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * occlusion);
-                        std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * occlusion);
-                        std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * occlusion);
+                        std::uint8_t alpha = (c >> 24) & 0xFF;
+                        std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * ao);
+                        std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * ao);
+                        std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * ao);
 
-                        dst[idx] = (a << 24) | (r << 16) | (g << 8) | b;
+                        dst[idx] = (alpha << 24) | (r << 16) | (g << 8) | b;
 
                         std::uint8_t aoByte = static_cast<std::uint8_t>(occlusion * 255.f);
-                        dst[idx] = (0xFF << 24) | (aoByte << 16) | (aoByte << 8) | aoByte;
+                        // dst[idx] = (0xFF << 24) | (aoByte << 16) | (aoByte << 8) | aoByte;
                     }
                 },
                 4);
@@ -547,8 +534,15 @@ namespace graphics {
 
                         const float interpolatedRecipW = (v0.RecipW * b0) + (v1.RecipW * b1) + (v2.RecipW * b2);
                         const float w = 1.f / interpolatedRecipW;
-                        const float z = (v0.Pos.Z * b0) + (v1.Pos.Z * b1) + (v2.Pos.Z * b2);
 
+                        const float zw0 = v0.Pos.Z * v0.RecipW;
+                        const float zw1 = v1.Pos.Z * v1.RecipW;
+                        const float zw2 = v2.Pos.Z * v2.RecipW;
+
+                        const float interpolatedZW = (zw0 * b0) + (zw1 * b1) + (zw2 * b2);
+                        const float ndcZ = interpolatedZW / interpolatedRecipW;
+
+                        const float z = (v0.Pos.Z * b0) + (v1.Pos.Z * b1) + (v2.Pos.Z * b2);
                         if(frame.TestDepth(x, y, z)) {
                             auto interpolate = [&](const math::Vector& a, const math::Vector& b,
                                                    const math::Vector& c) {
@@ -563,9 +557,14 @@ namespace graphics {
 
                             const std::uint32_t pixelColor = shader.Color(color, normal, worldPos, uv, tangent);
                             const std::uint32_t alpha = (pixelColor >> 24) & 0xFF;
+
                             if(alpha == 255) {
                                 frame.SetPixel(x, y, pixelColor);
                                 frame.SetDepth(x, y, z);
+
+                                const math::Matrix& viewMatrix = shader.Uniform.View;
+                                math::Vector viewNormal = viewMatrix * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
+                                frame.SetNormal(x, y, viewNormal.Norm());
                             }
                             else if(alpha > 0) {
                                 const std::uint32_t dstColor = frame.GetPixel(x, y);

@@ -170,6 +170,7 @@ namespace preferences {
         for(const std::shared_ptr<Object> object : Objects) {
             if(!object->ShouldRender) continue;
             Uniform.Model = object->Model;
+            Uniform.DepthBias = 0.f;
             Shader.Uniform = Uniform;
 
             for(const graphics::Mesh& mesh : object->Meshes) {

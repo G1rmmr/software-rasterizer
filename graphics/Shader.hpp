@@ -163,39 +163,36 @@ namespace shader {
             float cosTheta = std::abs(normal.Dot(lightDir));
             float bias = std::max(0.05f * (1.f - cosTheta), 0.005f);
 
-            float shadow = 0.f;
+            float avgBlockerDepth = 0.f;
+            int blockers = 0;
+            float searchWidth = 10.f / ShadowMapWidth;
 
-            float texX = 1.f / ShadowMapWidth;
-            float texY = 1.f / ShadowMapHeight;
-
-            std::uint16_t iWidth = static_cast<std::uint16_t>(ShadowMapWidth);
-            std::uint16_t iHeight = static_cast<std::uint16_t>(ShadowMapHeight);
-
-            std::int32_t baseX = static_cast<std::int32_t>(projCoords.X * ShadowMapWidth);
-            std::int32_t baseY = static_cast<std::int32_t>(projCoords.Y * ShadowMapHeight);
-
-            auto checkDepth = [&](std::int32_t ox, std::int32_t oy) {
-                std::int32_t px = baseX + ox;
-                std::int32_t py = baseY + oy;
-
-                if(px >= 0 && px < iWidth && py >= 0 && py < iHeight) {
-                    float pcfDepth = (*ShadowMap)[py * iWidth + px];
-                    return (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
+            for(int i = 0; i < 4; ++i) {
+                float z = (*ShadowMap)[getShadowIndex(projCoords.X + poissonDisk[i].X * searchWidth,
+                                                      projCoords.Y + poissonDisk[i].Y * searchWidth)];
+                if(z < currentDepth - bias) {
+                    avgBlockerDepth += z;
+                    blockers++;
                 }
-                return 1.f;
-            };
+            }
 
-            shadow += checkDepth(-1, -1);
-            shadow += checkDepth(0, -1);
-            shadow += checkDepth(1, -1);
-            shadow += checkDepth(-1, 0);
-            shadow += checkDepth(0, 0);
-            shadow += checkDepth(1, 0);
-            shadow += checkDepth(-1, 1);
-            shadow += checkDepth(0, 1);
-            shadow += checkDepth(1, 1);
+            if(blockers == 0) return 1.f;
 
-            return shadow * 0.111111f;
+            avgBlockerDepth /= blockers;
+            float penumbraRatio = (currentDepth - avgBlockerDepth) / avgBlockerDepth;
+            float filterRadius = penumbraRatio * 10.f * (1.f / ShadowMapWidth);
+
+            float shadow = 0.f;
+            int samples = 0;
+
+            for(int i = 0; i < 4; ++i) {
+                float pcfDepth = (*ShadowMap)[getShadowIndex(projCoords.X + poissonDisk[i].X * filterRadius,
+                                                             projCoords.Y + poissonDisk[i].Y * filterRadius)];
+                shadow += (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
+                samples++;
+            }
+
+            return shadow / samples;
         }
 
         ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
@@ -219,6 +216,20 @@ namespace shader {
             out.Tangent = math::Vector(tDir.X, tDir.Y, tDir.Z, in.Tangent.W);
             out.UV = in.UV;
             return out;
+        }
+
+    private:
+        const math::Vector poissonDisk[4] = {
+            math::Vector(-0.94201624, -0.39906216, 0.f, 0.f), math::Vector(0.94558609, -0.76890725, 0.f, 0.f),
+            math::Vector(-0.094184101, -0.92938870, 0.f, 0.f), math::Vector(0.34495938, 0.29387760, 0.f, 0.f)};
+
+        ENGINE_INLINE std::int32_t getShadowIndex(const float u, const float v) const {
+            std::int32_t x = static_cast<std::int32_t>(u * ShadowMapWidth);
+            std::int32_t y = static_cast<std::int32_t>(v * ShadowMapHeight);
+
+            x = std::clamp(x, 0, static_cast<std::int32_t>(ShadowMapWidth - 1));
+            y = std::clamp(y, 0, static_cast<std::int32_t>(ShadowMapHeight - 1));
+            return y * ShadowMapWidth + x;
         }
     };
 

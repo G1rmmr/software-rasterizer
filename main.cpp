@@ -18,7 +18,6 @@ int main() {
     std::shared_ptr<Plane> backWall = std::make_shared<Plane>();
     backWall->Create();
     backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({0.5f, 0.5f, 0.5f});
-    ;
     preferences::Objects.push_back(backWall);
 
     std::shared_ptr<Plane> plane = std::make_shared<Plane>();
@@ -28,7 +27,7 @@ int main() {
 
     preferences::Objects.push_back(plane);
 
-    std::shared_ptr<Diablo> model = std::make_shared<Diablo>();
+    std::shared_ptr<Object> model = std::make_shared<Diablo>();
     model->Create();
     preferences::Objects.push_back(model);
 

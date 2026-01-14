@@ -17,7 +17,11 @@ namespace graphics {
     class FrameBuffer {
     public:
         FrameBuffer(const std::uint32_t width, const std::uint32_t height) noexcept
-            : colors(width * height, 0), depthes(width * height, 1.f), width(width), height(height) {}
+            : colors(width * height, 0),
+              depthes(width * height, 1.f),
+              normals(width * height, math::Vector(0.f, 0.f, 0.f)),
+              width(width),
+              height(height) {}
 
         ~FrameBuffer() noexcept = default;
 
@@ -27,6 +31,7 @@ namespace graphics {
         FrameBuffer(FrameBuffer&& other) noexcept
             : colors(std::move(other.colors)),
               depthes(std::move(other.depthes)),
+              normals(std::move(other.normals)),
               width(other.width),
               height(other.height) {}
 
@@ -34,6 +39,7 @@ namespace graphics {
             if(this != &other) {
                 colors = std::move(other.colors);
                 depthes = std::move(other.depthes);
+                normals = std::move(other.normals);
                 width = other.width;
                 height = other.height;
             }
@@ -49,6 +55,7 @@ namespace graphics {
         ENGINE_INLINE void Clear(const std::uint32_t clearColor = 0) noexcept {
             std::fill(colors.begin(), colors.end(), clearColor);
             std::fill(depthes.begin(), depthes.end(), 1.f);
+            std::fill(normals.begin(), normals.end(), math::Vector(0.f, 0.f, 0.f));
         }
 
         ENGINE_INLINE void SetPixel(const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) noexcept {
@@ -71,6 +78,18 @@ namespace graphics {
         ENGINE_INLINE void SetDepth(const std::uint32_t x, const std::uint32_t y, const float z) noexcept {
             if(x >= width || y >= height) return;
             depthes[y * width + x] = z;
+        }
+
+        ENGINE_INLINE void SetNormal(const std::uint32_t x, const std::uint32_t y,
+                                     const math::Vector& normal) noexcept {
+            if(x >= width || y >= height) return;
+            normals[y * width + x] = normal;
+        }
+
+        [[nodiscard]] ENGINE_INLINE math::Vector GetNormal(const std::uint32_t x,
+                                                           const std::uint32_t y) const noexcept {
+            if(x >= width || y >= height) return math::Vector(0.f, 0.f, 0.f);
+            return normals[y * width + x];
         }
 
         ENGINE_INLINE BoundingBox ENGINE_VECTORCALL GetBound(const math::Vector& v0, const math::Vector& v1,
@@ -104,6 +123,7 @@ namespace graphics {
         ENGINE_INLINE void UpdateBuffer(const std::vector<std::uint32_t>& newColors) noexcept { colors = newColors; }
 
     private:
+        std::vector<math::Vector> normals;
         std::vector<std::uint32_t> colors;
         std::vector<float> depthes;
         std::uint32_t width;
