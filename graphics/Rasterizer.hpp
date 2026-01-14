@@ -13,9 +13,9 @@ namespace graphics {
     enum class PrimitiveType { Points, Lines, Triangles };
 
     constexpr std::int32_t AO_KERNEL_SIZE = 16;
-    constexpr float AO_RADIUS = 15.f;
-    constexpr float AO_BIAS = 0.02f;
-    constexpr float AO_STRENGTH = 1.2f;
+    constexpr float AO_RADIUS = 25.f;
+    constexpr float AO_BIAS = 0.1f;
+    constexpr float AO_STRENGTH = 1.5f;
 
     class Rasterizer {
     public:
@@ -104,12 +104,6 @@ namespace graphics {
                 }
             }
 
-            static std::vector<float> randomAngles;
-            if(randomAngles.empty()) {
-                randomAngles.resize(16);
-                for(float& ang : randomAngles) ang = math::RandomFloat(0.f, 6.28f);
-            }
-
             ParallelExecutor::GetInstance().ParallelFor(
                 0, h,
                 [&](std::int32_t y) {
@@ -121,6 +115,10 @@ namespace graphics {
                             dst[idx] = colorBuffer[idx];
                             continue;
                         }
+
+                        float rotAngle = static_cast<float>((x * 13 + y * 47) % 512) * (6.28318f / 512.f);
+                        float cosA = std::cos(rotAngle);
+                        float sinA = std::sin(rotAngle);
 
                         float uvX = (x + 0.5f) / static_cast<float>(w);
                         float uvY = (y + 0.5f) / static_cast<float>(h);
@@ -134,13 +132,7 @@ namespace graphics {
                         float pixelRadius = (AO_RADIUS / depth);
                         pixelRadius = std::clamp(pixelRadius, 2.f, AO_RADIUS);
 
-                        int noiseIdx = ((y % 4) * 4) + (x % 4);
-                        float rotAngle = randomAngles[noiseIdx];
-                        float cosA = std::cos(rotAngle);
-                        float sinA = std::sin(rotAngle);
-
                         float occlusion = 0.f;
-
                         for(const auto& k : spiralKernel) {
                             float rotatedX = k.first * cosA - k.second * sinA;
                             float rotatedY = k.first * sinA + k.second * cosA;

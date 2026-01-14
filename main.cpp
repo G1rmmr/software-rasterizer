@@ -42,7 +42,7 @@ int main() {
         preferences::MapShadow();
         preferences::Render();
         preferences::Rasterizer.ApplySSAO(preferences::Uniform, preferences::NEAR, preferences::FAR);
-        // preferences::Rasterizer.ApplyPostAA();
+        preferences::Rasterizer.ApplyPostAA();
 
         int state = mfb_update(window, preferences::Frame.GetColor());
         if(state < 0) {

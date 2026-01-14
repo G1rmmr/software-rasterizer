@@ -29,7 +29,7 @@ namespace preferences {
 
     constexpr inline float FOV_ANGLE = 45.f;
     constexpr inline float NEAR = 0.1f;
-    constexpr inline float FAR = 500.f;
+    constexpr inline float FAR = 100.f;
 
     const inline math::Vector UP(0.f, 1.f, 0.f);
     const inline math::Vector EYE(0.f, 0.f, 5.f);
