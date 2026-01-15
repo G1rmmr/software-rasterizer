@@ -145,8 +145,8 @@ namespace shader {
 
             float currentDepth = projCoords.Z;
 
-            float cosTheta = std::abs(normal.Dot(lightDir));
-            float bias = std::max(0.05f * (1.f - cosTheta), 0.005f);
+            float cosTheta = std::clamp(normal.Dot(lightDir), 0.f, 1.f);
+            float bias = std::max(0.005f * (1.0f - cosTheta), 0.0005f);
 
             float avgBlockerDepth = 0.f;
             int blockers = 0;

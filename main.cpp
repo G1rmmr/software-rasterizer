@@ -27,7 +27,7 @@ int main() {
 
     preferences::Objects.push_back(plane);
 
-    std::shared_ptr<Object> model = std::make_shared<African>();
+    std::shared_ptr<Object> model = std::make_shared<Diablo>();
     model->Create();
     preferences::Objects.push_back(model);
 
@@ -35,8 +35,8 @@ int main() {
     do {
         preferences::UpdateUniform(window);
 
-        model->Model = math::CreateTranslation({0.f, 2.f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
-                       math::CreateScale({5.f, 5.f, 5.f});
+        model->Model = math::CreateTranslation({0.f, 4.75f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
+                       math::CreateScale({8.f, 8.f, 8.f});
 
         preferences::pre::Render();
         preferences::main::Render();

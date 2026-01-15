@@ -25,8 +25,8 @@ namespace preferences {
     const char* WINDOW_TITLE = "software-rasterizer";
     constexpr inline std::uint32_t COLOR = 0xFF000000;
 
-    constexpr inline std::uint32_t WIDTH = 1280;
-    constexpr inline std::uint32_t HEIGHT = 720;
+    constexpr inline std::uint32_t WIDTH = 800;
+    constexpr inline std::uint32_t HEIGHT = 800;
 
     constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
     constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
@@ -44,7 +44,7 @@ namespace preferences {
 
         float X = 0.f;
         float Y = 0.f;
-        float CamDistance = 10.f;
+        float CamDistance = 45.f;
 
         graphics::PrimitiveType NowType = graphics::PrimitiveType::Triangles;
 
@@ -133,7 +133,7 @@ namespace preferences {
         static const math::Vector viewDir = math::Vector(0.f, 0.5f, 1.f).Norm();
 
         math::Vector camPos = viewDir * State.CamDistance;
-        math::Vector targetPos = math::Vector(0.f, 0.f, -5.f);
+        math::Vector targetPos = math::Vector(0.f, 2.f, -5.f);
 
         Uniform.CameraPos = camPos;
         Uniform.View = math::CreateLookAt(camPos, targetPos, UP);
