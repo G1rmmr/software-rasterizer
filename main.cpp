@@ -18,6 +18,7 @@ int main() {
     std::shared_ptr<Plane> backWall = std::make_shared<Plane>();
     backWall->Create();
     backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({0.5f, 0.5f, 0.5f});
+    backWall->CalculateBounds();
     preferences::Objects.push_back(backWall);
 
     std::shared_ptr<Plane> plane = std::make_shared<Plane>();
@@ -25,6 +26,7 @@ int main() {
     plane->Model = math::CreateTranslation({0.f, -3.f, -5.f}) *
                    math::CreateRotation({1.f, 0.f, 0.f}, math::ToRadian(-90.f)) * math::CreateScale({0.5f, 0.5f, 0.5f});
 
+    plane->CalculateBounds();
     preferences::Objects.push_back(plane);
 
     std::shared_ptr<Object> model = std::make_shared<Diablo>();
@@ -37,6 +39,8 @@ int main() {
 
         model->Model = math::CreateTranslation({0.f, 4.75f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
                        math::CreateScale({8.f, 8.f, 8.f});
+
+        model->CalculateBounds();
 
         preferences::pre::Render();
         preferences::main::Render();

@@ -8,6 +8,7 @@
 #include <MiniFB_enums.h>
 
 #include "graphics/FrameBuffer.hpp"
+#include "graphics/Frustrum.hpp"
 #include "graphics/Mesh.hpp"
 #include "graphics/Rasterizer.hpp"
 #include "graphics/Texture.hpp"
@@ -56,6 +57,7 @@ namespace preferences {
     inline shader::Uniforms Uniform;
     inline math::Vector Target(0.f, 0.f, 0.f);
     inline graphics::FrameBuffer* CurrFrame = nullptr;
+    inline graphics::Frustum CameraFrustum;
 
     namespace {
         inline void MouseButtonCallback(struct mfb_window* window, mfb_mouse_button button, mfb_key_mod mod,
@@ -155,6 +157,9 @@ namespace preferences {
         constexpr float aspect = static_cast<float>(WIDTH) / HEIGHT;
         Uniform.Proj = math::CreatePerspective(math::ToRadian(FOV_ANGLE), aspect, NEAR, FAR);
         Uniform.InvProj = Uniform.Proj.Inv();
+
+        math::Matrix vp = Uniform.Proj * Uniform.View;
+        CameraFrustum.Update(vp);
     }
 
     namespace pre {
@@ -213,6 +218,11 @@ namespace preferences {
             Frame.Clear(preferences::COLOR);
             for(const std::shared_ptr<Object> object : Objects) {
                 if(!object->ShouldRender) continue;
+
+                auto [worldCenter, worldRadius] = object->GetWorldBounds();
+
+                if(!CameraFrustum.IsSphereInside(worldCenter, worldRadius)) continue;
+
                 Uniform.Model = object->Model;
                 Uniform.DepthBias = 0.f;
                 Shader.Uniform = Uniform;

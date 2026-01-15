@@ -19,11 +19,50 @@ public:
     std::vector<graphics::Mesh> Meshes;
     math::Matrix Model;
 
+    math::Vector LocalCenter = {0.f, 0.f, 0.f};
+    float LocalRadius = 0.f;
+
     bool ShouldRender = true;
 
     inline Object() = default;
     inline virtual ~Object() = default;
     inline virtual void Create() {}
+
+    void CalculateBounds() {
+        if(Meshes.empty()) return;
+
+        math::Vector minPos(1e9f), maxPos(-1e9f);
+
+        for(const graphics::Mesh& mesh : Meshes) {
+            for(const shader::Vertex& v : mesh.Vertices) {
+                math::Vector pos = v.Pos;
+
+                if(pos.X < minPos.X) minPos.X = pos.X;
+                if(pos.Y < minPos.Y) minPos.Y = pos.Y;
+                if(pos.Z < minPos.Z) minPos.Z = pos.Z;
+
+                if(pos.X > maxPos.X) maxPos.X = pos.X;
+                if(pos.Y > maxPos.Y) maxPos.Y = pos.Y;
+                if(pos.Z > maxPos.Z) maxPos.Z = pos.Z;
+            }
+        }
+
+        LocalCenter = (minPos + maxPos) * 0.5f;
+        LocalRadius = (maxPos - minPos).Length() * 0.5f;
+    }
+
+    std::pair<math::Vector, float> GetWorldBounds() const {
+        math::Vector worldCenter = Model * math::Vector(LocalCenter.X, LocalCenter.Y, LocalCenter.Z, 1.f);
+
+        float maxScale = 1.f;
+
+        math::Vector right = Model * math::Vector(1.f, 0.f, 0.f, 0.f);
+        math::Vector up = Model * math::Vector(0.f, 1.f, 0.f, 0.f);
+        math::Vector fwd = Model * math::Vector(0.f, 0.f, 1.f, 0.f);
+        maxScale = std::max({right.Length(), up.Length(), fwd.Length()});
+
+        return {worldCenter, LocalRadius * maxScale};
+    }
 
 protected:
     static inline void loadObj(const std::string& filePath, std::vector<shader::Vertex>& vertices,
