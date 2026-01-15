@@ -27,7 +27,7 @@ int main() {
 
     preferences::Objects.push_back(plane);
 
-    std::shared_ptr<Object> model = std::make_shared<Diablo>();
+    std::shared_ptr<Object> model = std::make_shared<African>();
     model->Create();
     preferences::Objects.push_back(model);
 
@@ -42,9 +42,8 @@ int main() {
         preferences::main::Render();
         preferences::post::Render();
 
-        preferences::main::Frame.AntiAlias();
-
-        int state = mfb_update(window, preferences::main::Frame.GetColor());
+        preferences::CurrFrame->AntiAlias();
+        int state = mfb_update(window, preferences::CurrFrame->GetColor());
         if(state < 0) {
             window = nullptr;
             break;

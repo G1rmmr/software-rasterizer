@@ -55,6 +55,7 @@ namespace preferences {
     inline std::vector<std::shared_ptr<Object>> Objects;
     inline shader::Uniforms Uniform;
     inline math::Vector Target(0.f, 0.f, 0.f);
+    inline graphics::FrameBuffer* CurrFrame = nullptr;
 
     namespace {
         inline void MouseButtonCallback(struct mfb_window* window, mfb_mouse_button button, mfb_key_mod mod,
@@ -192,6 +193,8 @@ namespace preferences {
                 for(const graphics::Mesh& mesh : object->Meshes)
                     Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, graphics::PrimitiveType::Triangles);
             }
+
+            CurrFrame = &Frame;
         }
     }
 
@@ -225,6 +228,8 @@ namespace preferences {
                     Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType);
                 }
             }
+
+            CurrFrame = &Frame;
         }
     }
 
