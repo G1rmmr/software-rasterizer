@@ -229,15 +229,6 @@ namespace preferences {
     }
 
     namespace post {
-        inline const std::vector<shader::Vertex> ScreenQuadVertices = {
-            {{-1.f, -1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 0.f, 0.f}, {}}, // LB
-            {{1.f, -1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {}},  // RB
-            {{1.f, 1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {1.f, 1.f, 0.f, 0.f}, {}},   // RT
-            {{-1.f, 1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {}},  // LT
-        };
-
-        inline const std::vector<std::uint32_t> ScreenQuadIndices = {0, 1, 2, 0, 2, 3};
-
         inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
         inline graphics::Rasterizer Rasterizer(Frame);
         inline shader::Post Shader;
@@ -254,22 +245,26 @@ namespace preferences {
             Shader.NormalMap = &main::Frame.GetNormals();
             Shader.ColorMap = &main::Frame.GetColors();
 
-            Frame.Clear(0xFFFFFFFF);
+            Frame.Clear(0xFF000000);
 
             const std::int32_t w = static_cast<std::int32_t>(WIDTH);
             const std::int32_t h = static_cast<std::int32_t>(HEIGHT);
+            const std::size_t bufferSize = w * h;
 
-            std::vector<std::uint32_t>& dstBuffer = Frame.GetColors();
+            if(Shader.AOBuffer.size() != bufferSize) {
+                Shader.AOBuffer.resize(bufferSize);
+                Shader.TempBuffer.resize(bufferSize);
+            }
 
             ParallelExecutor::GetInstance().ParallelFor(
                 0, h,
                 [&](std::int32_t y) {
-                    for(std::int32_t x = 0; x < w; ++x) dstBuffer[y * w + x] = Shader.ProcessSSAO(x, y);
+                    for(std::int32_t x = 0; x < w; ++x) Shader.AOBuffer[y * w + x] = Shader.ComputeRawAO(x, y);
                 },
                 16);
 
-            // Rasterizer.Render(Shader, ScreenQuadVertices, ScreenQuadIndices, -1.f,
-            // graphics::PrimitiveType::Triangles);
+            ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.ProcessBlur(y); }, 16);
+            ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.Composite(y); }, 16);
         }
     }
 }

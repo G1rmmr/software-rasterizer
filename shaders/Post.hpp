@@ -19,6 +19,9 @@ namespace shader {
         std::vector<math::Vector>* NormalMap;
         std::vector<std::uint32_t>* ColorMap;
 
+        std::vector<float> AOBuffer;
+        std::vector<float> TempBuffer;
+
         ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const { return Uniform.Model * pos; }
 
         ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
@@ -31,7 +34,16 @@ namespace shader {
                                           const math::Vector& inTangent) const {
             std::int32_t x = static_cast<std::int32_t>(uv.X * Uniform.ScreenWidth);
             std::int32_t y = static_cast<std::int32_t>(uv.Y * Uniform.ScreenHeight);
-            return ProcessSSAO(x, y);
+            float ao = ComputeRawAO(x, y);
+
+            std::int32_t idx = y * Uniform.ScreenWidth + x;
+            std::uint32_t c = ColorMap->at(idx);
+            std::uint8_t a = (c >> 24) & 0xFF;
+            std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * ao);
+            std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * ao);
+            std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * ao);
+
+            return (a << 24) | (r << 16) | (g << 8) | b;
         }
 
         ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
@@ -42,12 +54,12 @@ namespace shader {
             return out;
         }
 
-        ENGINE_INLINE std::uint32_t ProcessSSAO(const std::int32_t x, const std::int32_t y,
-                                                const bool shouldDebug = false) const {
+        ENGINE_INLINE float ComputeRawAO(const std::int32_t x, const std::int32_t y,
+                                         const bool shouldDebug = false) const {
             std::int32_t idx = y * static_cast<std::int32_t>(Uniform.ScreenWidth) + x;
 
             float rawDepth = DepthMap->at(idx);
-            if(rawDepth >= 1.f - 1e-5f) return ColorMap->at(idx);
+            if(rawDepth >= 1.f - 1e-5f) return 1.f;
 
             float u = (x + 0.5f) / Uniform.ScreenWidth;
             float v = (y + 0.5f) / Uniform.ScreenHeight;
@@ -55,14 +67,12 @@ namespace shader {
             math::Vector clipPos(u * 2.f - 1.f, 1.f - v * 2.f, rawDepth * 2.f - 1.f, 1.f);
             math::Vector viewPosRaw = Uniform.InvProj * clipPos;
             math::Vector viewPos = viewPosRaw / viewPosRaw.W;
-
             math::Vector viewNormal = NormalMap->at(idx);
 
             float depthScaleBias = Uniform.BiasAO * (1.0f + std::abs(viewPos.Z) * 0.05f);
 
             std::uint32_t hash = (x * 73856093) ^ (y * 19349663) ^ (x * y * 83492791);
             float randomVal = (hash & 0xFFFF) / 65536.0f;
-
             float randomRot = randomVal * 6.28318f;
             float occlusion = 0.f;
             float pixelRadius = std::clamp(Uniform.RadiusAO / -viewPos.Z, 2.f, Uniform.RadiusAO);
@@ -95,20 +105,54 @@ namespace shader {
                 if(dist > depthScaleBias && dist < 1.f && dotVal > 0.f) occlusion += dotVal;
             }
 
-            float ao = std::pow(1.f - (occlusion / Uniform.KernelSizeAO), Uniform.StrengthAO);
+            return std::pow(1.f - (occlusion / Uniform.KernelSizeAO), Uniform.StrengthAO);
+        }
 
-            if(shouldDebug) {
-                std::uint8_t aoByte = static_cast<std::uint8_t>(ao * 255.f);
-                return (0xFF << 24) | (aoByte << 16) | (aoByte << 8) | aoByte;
+        ENGINE_INLINE void ProcessBlur(const std::int32_t y) {
+            std::int32_t w = static_cast<std::int32_t>(Uniform.ScreenWidth);
+            std::int32_t h = static_cast<std::int32_t>(Uniform.ScreenHeight);
+
+            if(y < 2 || y >= h - 2) return;
+
+            for(std::int32_t x = 2; x < w - 2; ++x) {
+                std::int32_t idx = y * w + x;
+                float centerDepth = (*DepthMap)[idx];
+
+                float sum = 0.f;
+                float weightSum = 0.f;
+
+                for(int ky = -2; ky <= 2; ++ky) {
+                    for(int kx = -2; kx <= 2; ++kx) {
+                        int neighborIdx = (y + ky) * w + (x + kx);
+                        float neighborDepth = (*DepthMap)[neighborIdx];
+
+                        if(std::abs(centerDepth - neighborDepth) < 0.05f) {
+                            sum += AOBuffer[neighborIdx];
+                            weightSum += 1.f;
+                        }
+                    }
+                }
+                TempBuffer[idx] = weightSum > 0.f ? sum / weightSum : AOBuffer[idx];
             }
+        }
 
-            std::uint32_t c = (*ColorMap)[idx];
-            std::uint8_t a = (c >> 24) & 0xFF;
-            std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * ao);
-            std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * ao);
-            std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * ao);
+        ENGINE_INLINE void Composite(std::int32_t y) {
+            std::int32_t w = static_cast<std::int32_t>(Uniform.ScreenWidth);
 
-            return (a << 24) | (r << 16) | (g << 8) | b;
+            for(std::int32_t x = 0; x < w; ++x) {
+                std::int32_t idx = y * w + x;
+
+                float ao = TempBuffer[idx];
+                if(ao == 0.f && (x < 2 || x >= w - 2)) ao = 1.f;
+
+                std::uint32_t c = ColorMap->at(idx);
+                std::uint8_t a = (c >> 24) & 0xFF;
+                std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * ao);
+                std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * ao);
+                std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * ao);
+
+                ColorMap->at(idx) = (a << 24) | (r << 16) | (g << 8) | b;
+            }
         }
     };
 }
