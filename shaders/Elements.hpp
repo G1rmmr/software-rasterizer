@@ -46,9 +46,9 @@ namespace shader {
         float DepthBias = 0.f;
         float ScreenWidth = 0.f;
         float ScreenHeight = 0.f;
-        float RadiusAO = 80.f;
-        float BiasAO = 0.001f;
-        float StrengthAO = 5.f;
+        float RadiusAO = 150.f;
+        float BiasAO = 0.05f;
+        float StrengthAO = 1.5f;
 
         std::int32_t KernelSizeAO = 16;
     };

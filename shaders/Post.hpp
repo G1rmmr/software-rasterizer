@@ -58,6 +58,8 @@ namespace shader {
 
             math::Vector viewNormal = NormalMap->at(idx);
 
+            float depthScaleBias = Uniform.BiasAO * (1.0f + std::abs(viewPos.Z) * 0.05f);
+
             std::uint32_t hash = (x * 73856093) ^ (y * 19349663) ^ (x * y * 83492791);
             float randomVal = (hash & 0xFFFF) / 65536.0f;
 
@@ -89,8 +91,8 @@ namespace shader {
                 math::Vector vec = neighborPos - viewPos;
                 float dist = vec.Length();
 
-                float dotVal = std::max(0.f, viewNormal.Dot(vec / (dist + 1e-6f)));
-                if(dist > Uniform.BiasAO && dist < 1.f) occlusion += dotVal;
+                float dotVal = viewNormal.Dot(vec / (dist + 1e-6f)) - Uniform.BiasAO;
+                if(dist > depthScaleBias && dist < 1.f && dotVal > 0.f) occlusion += dotVal;
             }
 
             float ao = std::pow(1.f - (occlusion / Uniform.KernelSizeAO), Uniform.StrengthAO);

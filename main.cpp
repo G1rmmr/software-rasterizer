@@ -42,7 +42,7 @@ int main() {
         preferences::main::Render();
         preferences::post::Render();
 
-        preferences::post::Frame.AntiAlias(false);
+        preferences::post::Frame.AntiAlias();
 
         int state = mfb_update(window, preferences::post::Frame.GetColor());
         if(state < 0) {
