@@ -33,18 +33,18 @@ int main() {
 
     float angle = 0.f;
     do {
-        preferences::Frame.Clear(preferences::COLOR);
         preferences::UpdateUniform(window);
 
         model->Model = math::CreateTranslation({0.f, 2.f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
                        math::CreateScale({5.f, 5.f, 5.f});
 
-        preferences::MapShadow();
-        preferences::Render();
-        preferences::Rasterizer.ApplySSAO(preferences::Uniform, preferences::NEAR, preferences::FAR);
-        preferences::Rasterizer.ApplyPostAA();
+        preferences::pre::Render();
+        preferences::main::Render();
+        preferences::post::Render();
 
-        int state = mfb_update(window, preferences::Frame.GetColor());
+        preferences::post::Frame.AntiAlias(false);
+
+        int state = mfb_update(window, preferences::post::Frame.GetColor());
         if(state < 0) {
             window = nullptr;
             break;

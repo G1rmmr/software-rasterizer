@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-#include "Shader.hpp"
+#include "../shaders/Elements.hpp"
 #include "Texture.hpp"
 
 namespace graphics {

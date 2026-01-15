@@ -5,17 +5,13 @@
 #include <vector>
 
 #include "../math/Math.hpp"
+#include "../shaders/Elements.hpp"
+
 #include "FrameBuffer.hpp"
 #include "ParallelExecutor.hpp"
-#include "Shader.hpp"
 
 namespace graphics {
     enum class PrimitiveType { Points, Lines, Triangles };
-
-    constexpr std::int32_t AO_KERNEL_SIZE = 16;
-    constexpr float AO_RADIUS = 25.f;
-    constexpr float AO_BIAS = 0.1f;
-    constexpr float AO_STRENGTH = 1.5f;
 
     class Rasterizer {
     public:
@@ -48,132 +44,6 @@ namespace graphics {
                 processVertices<Shader>(shader, vertices, limitedIndices, near);
 
             dispatchPrimitives<Shader>(shader, screenVertices, limitedIndices, type);
-        }
-
-        // AA
-        ENGINE_INLINE void ApplyPostAA() {
-            std::uint32_t* __restrict src = frame.GetColors().data();
-            std::vector<std::uint32_t> temp = frame.GetColors();
-            std::uint32_t* __restrict dst = temp.data();
-
-            const std::uint32_t w = frame.GetWidth();
-            const std::uint32_t h = frame.GetHeight();
-            const int THRESHOLD = 30;
-
-            ParallelExecutor::GetInstance().ParallelFor(
-                1, h - 1,
-                [=](std::size_t y) {
-                    for(std::uint32_t x = 1; x < w - 1; ++x) {
-                        std::uint32_t idx = y * w + x;
-                        std::uint32_t current = src[idx];
-
-                        std::uint32_t up = src[idx - w];
-                        std::uint32_t down = src[idx + w];
-                        std::uint32_t left = src[idx - 1];
-                        std::uint32_t right = src[idx + 1];
-
-                        int diff = colorDiff(current, up) + colorDiff(current, down) + colorDiff(current, left) +
-                                   colorDiff(current, right);
-
-                        if(diff > THRESHOLD) dst[idx] = mixColors(current, up, down, left, right);
-                    }
-                },
-                16);
-            frame.UpdateBuffer(temp);
-        }
-
-        // SSAO
-        ENGINE_INLINE void ApplySSAO(const shader::Uniforms& uniform, const float near, const float far) {
-            std::uint32_t w = frame.GetWidth();
-            std::uint32_t h = frame.GetHeight();
-
-            const float* __restrict depthBuffer = frame.GetDepth();
-            std::uint32_t* __restrict colorBuffer = frame.GetColor();
-            std::vector<std::uint32_t> temp = frame.GetColors();
-            std::uint32_t* __restrict dst = temp.data();
-
-            math::Matrix invProj = uniform.Proj.Inv();
-
-            static std::vector<std::pair<float, float>> spiralKernel;
-            if(spiralKernel.empty()) {
-                spiralKernel.resize(AO_KERNEL_SIZE);
-                for(int i = 0; i < AO_KERNEL_SIZE; ++i) {
-                    float angle = 2.4f * i;
-                    float radius = std::sqrt((float)i / AO_KERNEL_SIZE);
-                    spiralKernel[i] = {std::cos(angle) * radius, std::sin(angle) * radius};
-                }
-            }
-
-            ParallelExecutor::GetInstance().ParallelFor(
-                0, h,
-                [&](std::int32_t y) {
-                    for(std::int32_t x = 0; x < w; ++x) {
-                        std::int32_t idx = y * w + x;
-                        float currentDepthRaw = depthBuffer[idx];
-
-                        if(currentDepthRaw >= 1.f - 1e-5f) {
-                            dst[idx] = colorBuffer[idx];
-                            continue;
-                        }
-
-                        float rotAngle = static_cast<float>((x * 13 + y * 47) % 512) * (6.28318f / 512.f);
-                        float cosA = std::cos(rotAngle);
-                        float sinA = std::sin(rotAngle);
-
-                        float uvX = (x + 0.5f) / static_cast<float>(w);
-                        float uvY = (y + 0.5f) / static_cast<float>(h);
-
-                        math::Vector clipPos(uvX * 2.f - 1.f, 1.f - uvY * 2.f, currentDepthRaw * 2.f - 1.f, 1.f);
-                        math::Vector viewPosRaw = invProj * clipPos;
-                        math::Vector viewPos = viewPosRaw / viewPosRaw.W;
-
-                        float depth = -viewPos.Z;
-
-                        float pixelRadius = (AO_RADIUS / depth);
-                        pixelRadius = std::clamp(pixelRadius, 2.f, AO_RADIUS);
-
-                        float occlusion = 0.f;
-                        for(const auto& k : spiralKernel) {
-                            float rotatedX = k.first * cosA - k.second * sinA;
-                            float rotatedY = k.first * sinA + k.second * cosA;
-
-                            int sX = x + static_cast<int>(rotatedX * pixelRadius);
-                            int sY = y + static_cast<int>(rotatedY * pixelRadius);
-
-                            if(sX < 0 || sX >= (int)w || sY < 0 || sY >= (int)h) continue;
-
-                            float neighborDepthRaw = depthBuffer[sY * w + sX];
-
-                            float nUvX = (sX + 0.5f) / static_cast<float>(w);
-                            float nUvY = (sY + 0.5f) / static_cast<float>(h);
-
-                            math::Vector nClipPos(nUvX * 2.f - 1.f, 1.f - nUvY * 2.f, neighborDepthRaw * 2.f - 1.f,
-                                                  1.f);
-                            math::Vector nViewPosRaw = invProj * nClipPos;
-                            float neighborDepth = -(nViewPosRaw.Z / nViewPosRaw.W);
-
-                            float rangeCheck = std::abs(depth - neighborDepth) < 1.f ? 1.f : 0.f;
-
-                            if(neighborDepth < depth - AO_BIAS) occlusion += 1.f * rangeCheck;
-                        }
-
-                        float ao = 1.f - (occlusion / AO_KERNEL_SIZE);
-                        ao = std::pow(ao, AO_STRENGTH);
-
-                        std::uint32_t c = colorBuffer[idx];
-                        std::uint8_t alpha = (c >> 24) & 0xFF;
-                        std::uint8_t r = static_cast<std::uint8_t>(((c >> 16) & 0xFF) * ao);
-                        std::uint8_t g = static_cast<std::uint8_t>(((c >> 8) & 0xFF) * ao);
-                        std::uint8_t b = static_cast<std::uint8_t>((c & 0xFF) * ao);
-
-                        dst[idx] = (alpha << 24) | (r << 16) | (g << 8) | b;
-
-                        std::uint8_t aoByte = static_cast<std::uint8_t>(occlusion * 255.f);
-                        // dst[idx] = (0xFF << 24) | (aoByte << 16) | (aoByte << 8) | aoByte;
-                    }
-                },
-                4);
-            frame.UpdateBuffer(temp);
         }
 
     private:
@@ -572,32 +442,6 @@ namespace graphics {
                 row1 += dy1;
                 row2 += dy2;
             }
-        }
-
-        ENGINE_INLINE std::int32_t ENGINE_VECTORCALL colorDiff(const std::uint32_t c1, const std::uint32_t c2) {
-            int r1 = (c1 >> 16) & 0xFF;
-            int g1 = (c1 >> 8) & 0xFF;
-            int b1 = c1 & 0xFF;
-            int r2 = (c2 >> 16) & 0xFF;
-            int g2 = (c2 >> 8) & 0xFF;
-            int b2 = c2 & 0xFF;
-            return std::abs(r1 - r2) + std::abs(g1 - g2) + std::abs(b1 - b2);
-        }
-
-        ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL mixColors(const std::uint32_t c1, const std::uint32_t c2,
-                                                                const std::uint32_t c3, const std::uint32_t c4,
-                                                                const std::uint32_t c5) {
-            int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF) +
-                     ((c5 >> 16) & 0xFF)) /
-                    5;
-
-            int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF) + ((c3 >> 8) & 0xFF) + ((c4 >> 8) & 0xFF) +
-                     ((c5 >> 8) & 0xFF)) /
-                    5;
-
-            int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
-
-            return (0xFF << 24) | (r << 16) | (g << 8) | b;
         }
 
         ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL alphaBlend(const std::uint32_t src, const std::uint32_t dst) {

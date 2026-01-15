@@ -10,10 +10,14 @@
 #include "graphics/FrameBuffer.hpp"
 #include "graphics/Mesh.hpp"
 #include "graphics/Rasterizer.hpp"
-#include "graphics/Shader.hpp"
 #include "graphics/Texture.hpp"
 
 #include "math/Math.hpp"
+
+#include "shaders/Elements.hpp"
+#include "shaders/Model.hpp"
+#include "shaders/Post.hpp"
+#include "shaders/Shadow.hpp"
 
 #include "objects/Object.hpp"
 
@@ -49,15 +53,6 @@ namespace preferences {
     } State;
 
     inline std::vector<std::shared_ptr<Object>> Objects;
-
-    inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
-    inline graphics::Rasterizer Rasterizer(Frame);
-    inline shader::Model Shader;
-
-    inline graphics::FrameBuffer ShadowFrame(SHADOW_WIDTH, SHADOW_HEIGHT);
-    inline graphics::Rasterizer ShadowRasterizer(ShadowFrame);
-    inline shader::Shadow ShadowShader;
-
     inline shader::Uniforms Uniform;
     inline math::Vector Target(0.f, 0.f, 0.f);
 
@@ -130,12 +125,6 @@ namespace preferences {
         mfb_set_mouse_scroll_callback(window, MouseScrollCallback);
 
         Uniform.LightDir = math::Vector(-0.5f, 1.f, 1.f, 0.f).Norm();
-
-        ShadowFrame.Clear(0xFFFFFFFF);
-        Shader.ShadowMap = &ShadowFrame.GetDepthes();
-        Shader.ShadowMapWidth = (float)SHADOW_WIDTH;
-        Shader.ShadowMapHeight = (float)SHADOW_HEIGHT;
-
         return window;
     }
 
@@ -164,56 +153,123 @@ namespace preferences {
 
         constexpr float aspect = static_cast<float>(WIDTH) / HEIGHT;
         Uniform.Proj = math::CreatePerspective(math::ToRadian(FOV_ANGLE), aspect, NEAR, FAR);
+        Uniform.InvProj = Uniform.Proj.Inv();
     }
 
-    inline void Render() {
-        for(const std::shared_ptr<Object> object : Objects) {
-            if(!object->ShouldRender) continue;
-            Uniform.Model = object->Model;
-            Uniform.DepthBias = 0.f;
+    namespace pre {
+        namespace {
+            inline graphics::FrameBuffer Frame(SHADOW_WIDTH, SHADOW_HEIGHT);
+            inline graphics::Rasterizer Rasterizer(Frame);
+            inline shader::Shadow Shader;
+        }
+
+        inline void Render(const bool shouldRender = true) {
+            if(!shouldRender) return;
+
+            math::Vector lightDir = Uniform.LightDir.Norm();
+            math::Vector lightPos = lightDir * 100.f;
+            math::Vector lightTarget = {0.f, 0.f, 0.f};
+
+            math::Vector lightUp = {0.f, 1.f, 0.f};
+            if(std::abs(lightDir.Y) > 0.99f) lightUp = {0.f, 0.f, 1.f};
+
+            math::Matrix lightView = math::CreateLookAt(lightPos, lightTarget, lightUp);
+
+            const float orthoSize = 15.f;
+            math::Matrix lightProj = math::CreateOrtho(-orthoSize, orthoSize, -orthoSize, orthoSize, -200.f, 200.f);
+
+            Uniform.LightSpace = lightProj * lightView;
+
+            Shader.Uniform.LightSpace = Uniform.LightSpace;
+            Shader.Uniform.View = lightView;
+            Shader.Uniform.Proj = lightProj;
+
+            Frame.Clear(0xFFFFFFFF);
+            for(const std::shared_ptr<Object> object : Objects) {
+                if(!object->ShouldRender) continue;
+
+                Shader.Uniform.Model = object->Model;
+                for(const graphics::Mesh& mesh : object->Meshes)
+                    Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, graphics::PrimitiveType::Triangles);
+            }
+        }
+    }
+
+    namespace main {
+        inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
+        inline graphics::Rasterizer Rasterizer(Frame);
+        inline shader::Model Shader;
+
+        inline void Render(const bool shouldRender = true) {
+            if(!shouldRender) return;
+
+            Shader.ShadowMap = &pre::Frame.GetDepthes();
+            Shader.ShadowMapWidth = static_cast<float>(SHADOW_WIDTH);
+            Shader.ShadowMapHeight = static_cast<float>(SHADOW_HEIGHT);
+
+            Frame.Clear(preferences::COLOR);
+            for(const std::shared_ptr<Object> object : Objects) {
+                if(!object->ShouldRender) continue;
+                Uniform.Model = object->Model;
+                Uniform.DepthBias = 0.f;
+                Shader.Uniform = Uniform;
+
+                for(const graphics::Mesh& mesh : object->Meshes) {
+                    Shader.DiffuseMap = mesh.DiffuseMap;
+                    Shader.NormalMap = mesh.NormalMap;
+                    Shader.SpecularMap = mesh.SpecularMap;
+                    Shader.GlossMap = mesh.GlossMap;
+                    Shader.GlowMap = mesh.GlowMap;
+                    Shader.SSSMap = mesh.SSSMap;
+
+                    Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType);
+                }
+            }
+        }
+    }
+
+    namespace post {
+        inline const std::vector<shader::Vertex> ScreenQuadVertices = {
+            {{-1.f, -1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {0.f, 0.f, 0.f, 0.f}, {}}, // LB
+            {{1.f, -1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {1.f, 0.f, 0.f, 0.f}, {}},  // RB
+            {{1.f, 1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {1.f, 1.f, 0.f, 0.f}, {}},   // RT
+            {{-1.f, 1.f, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {1.f, 1.f, 1.f, 1.f}, {0.f, 1.f, 0.f, 0.f}, {}},  // LT
+        };
+
+        inline const std::vector<std::uint32_t> ScreenQuadIndices = {0, 1, 2, 0, 2, 3};
+
+        inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
+        inline graphics::Rasterizer Rasterizer(Frame);
+        inline shader::Post Shader;
+
+        inline void Render(const bool shouldRender = true) {
+            if(!shouldRender) return;
+
             Shader.Uniform = Uniform;
 
-            for(const graphics::Mesh& mesh : object->Meshes) {
-                Shader.DiffuseMap = mesh.DiffuseMap;
-                Shader.NormalMap = mesh.NormalMap;
-                Shader.SpecularMap = mesh.SpecularMap;
-                Shader.GlossMap = mesh.GlossMap;
-                Shader.GlowMap = mesh.GlowMap;
-                Shader.SSSMap = mesh.SSSMap;
+            Shader.Uniform.ScreenWidth = static_cast<float>(WIDTH);
+            Shader.Uniform.ScreenHeight = static_cast<float>(HEIGHT);
 
-                Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType);
-            }
+            Shader.DepthMap = &main::Frame.GetDepthes();
+            Shader.NormalMap = &main::Frame.GetNormals();
+            Shader.ColorMap = &main::Frame.GetColors();
+
+            Frame.Clear(0xFFFFFFFF);
+
+            const std::int32_t w = static_cast<std::int32_t>(WIDTH);
+            const std::int32_t h = static_cast<std::int32_t>(HEIGHT);
+
+            std::vector<std::uint32_t>& dstBuffer = Frame.GetColors();
+
+            ParallelExecutor::GetInstance().ParallelFor(
+                0, h,
+                [&](std::int32_t y) {
+                    for(std::int32_t x = 0; x < w; ++x) dstBuffer[y * w + x] = Shader.ProcessSSAO(x, y);
+                },
+                16);
+
+            // Rasterizer.Render(Shader, ScreenQuadVertices, ScreenQuadIndices, -1.f,
+            // graphics::PrimitiveType::Triangles);
         }
-    }
-
-    inline void MapShadow() {
-        math::Vector lightDir = Uniform.LightDir.Norm();
-        math::Vector lightPos = lightDir * 100.f;
-        math::Vector lightTarget = {0.f, 0.f, 0.f};
-
-        math::Vector lightUp = {0.f, 1.f, 0.f};
-        if(std::abs(lightDir.Y) > 0.99f) lightUp = {0.f, 0.f, 1.f};
-
-        math::Matrix lightView = math::CreateLookAt(lightPos, lightTarget, lightUp);
-
-        const float orthoSize = 15.0f;
-        math::Matrix lightProj = math::CreateOrtho(-orthoSize, orthoSize, -orthoSize, orthoSize, -200.f, 200.f);
-        math::Matrix lightSpaceMatrix = lightProj * lightView;
-
-        ShadowShader.Uniform.LightSpace = lightSpaceMatrix;
-        ShadowShader.Uniform.View = lightView;
-        ShadowShader.Uniform.Proj = lightProj;
-
-        ShadowFrame.Clear(0xFFFFFFFF);
-        for(const std::shared_ptr<Object> object : Objects) {
-            if(!object->ShouldRender) continue;
-
-            ShadowShader.Uniform.Model = object->Model;
-            for(const graphics::Mesh& mesh : object->Meshes) {
-                ShadowRasterizer.Render(ShadowShader, mesh.Vertices, mesh.Indices, NEAR,
-                                        graphics::PrimitiveType::Triangles);
-            }
-        }
-        Uniform.LightSpace = lightSpaceMatrix;
     }
 }

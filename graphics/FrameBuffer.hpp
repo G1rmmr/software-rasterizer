@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "../math/Math.hpp"
+#include "ParallelExecutor.hpp"
 
 namespace graphics {
     struct BoundingBox {
@@ -120,7 +121,38 @@ namespace graphics {
         ENGINE_INLINE std::vector<float>& GetDepthes() noexcept { return depthes; }
         ENGINE_INLINE const std::vector<float>& GetDepthes() const noexcept { return depthes; }
 
+        ENGINE_INLINE std::vector<math::Vector>& GetNormals() noexcept { return normals; }
+        ENGINE_INLINE const std::vector<math::Vector>& GetNormals() const noexcept { return normals; }
+
         ENGINE_INLINE void UpdateBuffer(const std::vector<std::uint32_t>& newColors) noexcept { colors = newColors; }
+
+        ENGINE_INLINE void AntiAlias(const bool shouldAlias = true, const std::uint32_t threshold = 30) {
+            if(!shouldAlias) return;
+
+            std::vector<std::uint32_t> dst(width * height);
+
+            ParallelExecutor::GetInstance().ParallelFor(
+                1, height - 1,
+                [&](std::size_t y) {
+                    for(std::uint32_t x = 1; x < width - 1; ++x) {
+                        std::uint32_t idx = y * width + x;
+
+                        std::uint32_t current = colors[idx];
+
+                        std::uint32_t up = colors[idx - width];
+                        std::uint32_t down = colors[idx + width];
+                        std::uint32_t left = colors[idx - 1];
+                        std::uint32_t right = colors[idx + 1];
+
+                        std::uint32_t diff = colorDiff(current, up) + colorDiff(current, down) +
+                                             colorDiff(current, left) + colorDiff(current, right);
+
+                        dst[idx] = diff > threshold ? mixColors(current, up, down, left, right) : current;
+                    }
+                },
+                16);
+            UpdateBuffer(dst);
+        }
 
     private:
         std::vector<math::Vector> normals;
@@ -128,5 +160,31 @@ namespace graphics {
         std::vector<float> depthes;
         std::uint32_t width;
         std::uint32_t height;
+
+        ENGINE_INLINE std::int32_t ENGINE_VECTORCALL colorDiff(const std::uint32_t c1, const std::uint32_t c2) {
+            int r1 = (c1 >> 16) & 0xFF;
+            int g1 = (c1 >> 8) & 0xFF;
+            int b1 = c1 & 0xFF;
+            int r2 = (c2 >> 16) & 0xFF;
+            int g2 = (c2 >> 8) & 0xFF;
+            int b2 = c2 & 0xFF;
+            return std::abs(r1 - r2) + std::abs(g1 - g2) + std::abs(b1 - b2);
+        }
+
+        ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL mixColors(const std::uint32_t c1, const std::uint32_t c2,
+                                                                const std::uint32_t c3, const std::uint32_t c4,
+                                                                const std::uint32_t c5) {
+            int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF) +
+                     ((c5 >> 16) & 0xFF)) /
+                    5;
+
+            int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF) + ((c3 >> 8) & 0xFF) + ((c4 >> 8) & 0xFF) +
+                     ((c5 >> 8) & 0xFF)) /
+                    5;
+
+            int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
+
+            return (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
     };
 }

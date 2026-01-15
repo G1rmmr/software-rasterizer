@@ -1,6 +1,10 @@
 #pragma once
 
+#include <vector>
+
 #include "Object.hpp"
+
+#include "../shaders/Elements.hpp"
 
 class Plane : public Object {
 public:
@@ -8,7 +12,6 @@ public:
         const float s = 30.f;
 
         std::vector<shader::Vertex> vertices = {
-            // Front face (+Z)
             {{-s, -s, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.7f, 0.7f, 0.7f, 1.f}, {}, {}}, // LB
             {{s, -s, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.7f, 0.7f, 0.7f, 1.f}, {}, {}},  // RB
             {{s, s, 0.f, 1.f}, {0.f, 0.f, 1.f, 0.f}, {0.7f, 0.7f, 0.7f, 1.f}, {}, {}},   // RT

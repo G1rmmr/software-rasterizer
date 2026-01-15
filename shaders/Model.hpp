@@ -1,53 +1,14 @@
-﻿#pragma once
+#pragma once
 
 #include <algorithm>
 
+#include "../graphics/Mesh.hpp"
+#include "../graphics/Texture.hpp"
 #include "../math/Math.hpp"
-#include "Mesh.hpp"
-#include "Texture.hpp"
+
+#include "Elements.hpp"
 
 namespace shader {
-    struct Vertex {
-        math::Vector Pos;
-        math::Vector Normal;
-        math::Vector Color;
-        math::Vector UV;
-        math::Vector Tangent;
-    };
-
-    struct Varyings {
-        math::Vector Pos;
-        math::Vector WorldPos;
-        math::Vector Normal;
-        math::Vector Color;
-        math::Vector UV;
-        math::Vector Tangent;
-        math::Vector Bitangent;
-        float RecipW;
-
-        ENGINE_INLINE static Varyings Lerp(const Varyings& v1, const Varyings& v2, float t) {
-            Varyings out;
-            out.Pos = v1.Pos * (1.f - t) + v2.Pos * t;
-            out.WorldPos = v1.WorldPos * (1.f - t) + v2.WorldPos * t;
-            out.Normal = (v1.Normal * (1.f - t) + v2.Normal * t).Norm();
-            out.Color = v1.Color * (1.f - t) + v2.Color * t;
-            out.UV = v1.UV * (1.f - t) + v2.UV * t;
-            out.Tangent = (v1.Tangent * (1.f - t) + v2.Tangent * t).Norm();
-            return out;
-        }
-    };
-
-    struct Uniforms {
-        math::Vector CameraPos;
-        math::Vector LightDir;
-        math::Matrix Model;
-        math::Matrix View;
-        math::Matrix Proj;
-        math::Matrix LightSpace;
-
-        float DepthBias = 0.0f;
-    };
-
     struct Model {
         Uniforms Uniform;
 
@@ -57,7 +18,7 @@ namespace shader {
         std::shared_ptr<graphics::Texture> GlossMap = nullptr;
         std::shared_ptr<graphics::Texture> GlowMap = nullptr;
         std::shared_ptr<graphics::Texture> SSSMap = nullptr;
-        const std::vector<float>* ShadowMap = nullptr;
+        std::vector<float>* ShadowMap = nullptr;
 
         float ShadowMapWidth = 0.f;
         float ShadowMapHeight = 0.f;
@@ -100,7 +61,7 @@ namespace shader {
             }
 
             math::Vector lightDir = Uniform.LightDir;
-            float shadow = CalculateShadow(worldPos, normDir, lightDir);
+            float shadow = calculateShadow(worldPos, normDir, lightDir);
 
             float diff = std::max(normDir.Dot(lightDir), 0.f) * shadow;
             float shininess = 64.f;
@@ -144,57 +105,6 @@ namespace shader {
                 simd::Clamp(simd::Mul(finalColor.V, simd::Set(255.f)), simd::Set(0.f), simd::Set(255.f)));
         }
 
-        ENGINE_INLINE float CalculateShadow(const math::Vector& worldPos, const math::Vector& normal,
-                                            const math::Vector& lightDir) const {
-            if(!ShadowMap) return 1.f;
-
-            math::Vector lightSpacePos = Uniform.LightSpace * worldPos;
-            math::Vector projCoords = lightSpacePos * (1.f / lightSpacePos.W);
-
-            projCoords.X = projCoords.X * 0.5f + 0.5f;
-            projCoords.Y = 1.f - (projCoords.Y * 0.5f + 0.5f);
-
-            if(projCoords.X < 0.f || projCoords.X > 1.f || projCoords.Y < 0.f || projCoords.Y > 1.f ||
-               projCoords.Z > 1.f)
-                return 1.f;
-
-            float currentDepth = projCoords.Z;
-
-            float cosTheta = std::abs(normal.Dot(lightDir));
-            float bias = std::max(0.05f * (1.f - cosTheta), 0.005f);
-
-            float avgBlockerDepth = 0.f;
-            int blockers = 0;
-            float searchWidth = 10.f / ShadowMapWidth;
-
-            for(int i = 0; i < 4; ++i) {
-                float z = (*ShadowMap)[getShadowIndex(projCoords.X + poissonDisk[i].X * searchWidth,
-                                                      projCoords.Y + poissonDisk[i].Y * searchWidth)];
-                if(z < currentDepth - bias) {
-                    avgBlockerDepth += z;
-                    blockers++;
-                }
-            }
-
-            if(blockers == 0) return 1.f;
-
-            avgBlockerDepth /= blockers;
-            float penumbraRatio = (currentDepth - avgBlockerDepth) / avgBlockerDepth;
-            float filterRadius = penumbraRatio * 10.f * (1.f / ShadowMapWidth);
-
-            float shadow = 0.f;
-            int samples = 0;
-
-            for(int i = 0; i < 4; ++i) {
-                float pcfDepth = (*ShadowMap)[getShadowIndex(projCoords.X + poissonDisk[i].X * filterRadius,
-                                                             projCoords.Y + poissonDisk[i].Y * filterRadius)];
-                shadow += (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
-                samples++;
-            }
-
-            return shadow / samples;
-        }
-
         ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
             Varyings out;
 
@@ -219,6 +129,57 @@ namespace shader {
         }
 
     private:
+        ENGINE_INLINE float calculateShadow(const math::Vector& worldPos, const math::Vector& normal,
+                                            const math::Vector& lightDir) const {
+            if(!ShadowMap) return 1.f;
+
+            math::Vector lightSpacePos = Uniform.LightSpace * worldPos;
+            math::Vector projCoords = lightSpacePos * (1.f / lightSpacePos.W);
+
+            projCoords.X = projCoords.X * 0.5f + 0.5f;
+            projCoords.Y = 1.f - (projCoords.Y * 0.5f + 0.5f);
+
+            if(projCoords.X < 0.f || projCoords.X > 1.f || projCoords.Y < 0.f || projCoords.Y > 1.f ||
+               projCoords.Z > 1.f)
+                return 1.f;
+
+            float currentDepth = projCoords.Z;
+
+            float cosTheta = std::abs(normal.Dot(lightDir));
+            float bias = std::max(0.05f * (1.f - cosTheta), 0.005f);
+
+            float avgBlockerDepth = 0.f;
+            int blockers = 0;
+            float searchWidth = 10.f / ShadowMapWidth;
+
+            for(int i = 0; i < 4; ++i) {
+                float z = ShadowMap->at(getShadowIndex(projCoords.X + poissonDisk[i].X * searchWidth,
+                                                       projCoords.Y + poissonDisk[i].Y * searchWidth));
+                if(z < currentDepth - bias) {
+                    avgBlockerDepth += z;
+                    blockers++;
+                }
+            }
+
+            if(blockers == 0) return 1.f;
+
+            avgBlockerDepth /= blockers;
+            float penumbraRatio = (currentDepth - avgBlockerDepth) / avgBlockerDepth;
+            float filterRadius = penumbraRatio * 10.f * (1.f / ShadowMapWidth);
+
+            float shadow = 0.f;
+            int samples = 0;
+
+            for(int i = 0; i < 4; ++i) {
+                float pcfDepth = ShadowMap->at(getShadowIndex(projCoords.X + poissonDisk[i].X * filterRadius,
+                                                              projCoords.Y + poissonDisk[i].Y * filterRadius));
+                shadow += (currentDepth - bias > pcfDepth) ? 0.f : 1.f;
+                samples++;
+            }
+
+            return shadow / samples;
+        }
+
         const math::Vector poissonDisk[4] = {
             math::Vector(-0.94201624, -0.39906216, 0.f, 0.f), math::Vector(0.94558609, -0.76890725, 0.f, 0.f),
             math::Vector(-0.094184101, -0.92938870, 0.f, 0.f), math::Vector(0.34495938, 0.29387760, 0.f, 0.f)};
@@ -230,31 +191,6 @@ namespace shader {
             x = std::clamp(x, 0, static_cast<std::int32_t>(ShadowMapWidth - 1));
             y = std::clamp(y, 0, static_cast<std::int32_t>(ShadowMapHeight - 1));
             return y * ShadowMapWidth + x;
-        }
-    };
-
-    struct Shadow {
-        Uniforms Uniform;
-
-        ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const {
-            return Uniform.LightSpace * Uniform.Model * pos;
-        }
-
-        ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
-            math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
-            return n.Norm();
-        }
-
-        ENGINE_INLINE std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
-                                          const math::Vector& worldPos, const math::Vector& uv,
-                                          const math::Vector& inTangent) const {
-            return 0xFFFFFFFF;
-        }
-
-        ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
-            Varyings out;
-            out.Pos = Vertex(in.Pos);
-            return out;
         }
     };
 }

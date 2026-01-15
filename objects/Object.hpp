@@ -9,9 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "graphics/Mesh.hpp"
-#include "graphics/Shader.hpp"
-#include "graphics/Texture.hpp"
+#include "../graphics/Mesh.hpp"
+#include "../graphics/Texture.hpp"
+
+#include "../shaders/Elements.hpp"
 
 class Object {
 public:
