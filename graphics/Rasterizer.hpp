@@ -303,46 +303,57 @@ namespace graphics {
         template <typename Shader>
         ENGINE_INLINE void ENGINE_VECTORCALL drawLine(const Shader& shader, const shader::Varyings& v0,
                                                       const shader::Varyings& v1) {
-            int x0 = static_cast<int>(std::round(v0.Pos.X));
-            int y0 = static_cast<int>(std::round(v0.Pos.Y));
-            int x1 = static_cast<int>(std::round(v1.Pos.X));
-            int y1 = static_cast<int>(std::round(v1.Pos.Y));
+            std::int32_t x0 = static_cast<std::int32_t>(std::round(v0.Pos.X));
+            std::int32_t y0 = static_cast<std::int32_t>(std::round(v0.Pos.Y));
+            std::int32_t x1 = static_cast<std::int32_t>(std::round(v1.Pos.X));
+            std::int32_t y1 = static_cast<std::int32_t>(std::round(v1.Pos.Y));
 
-            int dx = std::abs(x1 - x0);
-            int dy = std::abs(y1 - y0);
-            int sx = (x0 < x1) ? 1 : -1;
-            int sy = (y0 < y1) ? 1 : -1;
-            int err = dx - dy;
+            if((x0 < 0 && x1 < 0) || (x0 >= width && x1 >= width) || (y0 < 0 && y1 < 0) ||
+               (y0 >= height && y1 >= height))
+                return;
 
-            float totalDist = std::sqrt(static_cast<float>(dx * dx + dy * dy));
-            int startX = x0, startY = y0;
+            std::int32_t dx = std::abs(x1 - x0);
+            std::int32_t dy = std::abs(y1 - y0);
+            std::int32_t sx = (x0 < x1) ? 1 : -1;
+            std::int32_t sy = (y0 < y1) ? 1 : -1;
+            std::int32_t err = dx - dy;
+
+            float step = 1.f / (std::max(dx, dy) + 1e-6f);
+            float t = 0.f;
+
+            float z0 = v0.Pos.Z;
+            float z1 = v1.Pos.Z;
+
+            simd::Floats c0 = v0.Color.V;
+            simd::Floats c1 = v1.Color.V;
 
             while(true) {
-                float t = (totalDist < 1e-6f)
-                              ? 0.f
-                              : std::sqrt(std::pow(x0 - startX, 2) + std::pow(y0 - startY, 2)) / totalDist;
+                if(x0 >= 0 && x0 < static_cast<std::int32_t>(width) && y0 >= 0 &&
+                   y0 < static_cast<std::int32_t>(height)) {
+                    float z = z0 + (z1 - z0) * t;
 
-                float z = v0.Pos.Z * (1.f - t) + v1.Pos.Z * t;
-                math::Vector color = v0.Color * (1.f - t) + v1.Color * t;
+                    if(frame.TestDepth(x0, y0, z)) {
+                        math::Vector color = v0.Color * (1.f - t) + v1.Color * t;
+                        simd::Floats colorV = simd::Mul(color.V, simd::Set(255.f));
 
-                if(frame.TestDepth(x0, y0, z)) {
-                    simd::Floats colorV = simd::Mul(color.V, simd::Set(255.f));
-                    frame.SetPixel(x0, y0, simd::PackRGBA(colorV));
+                        frame.SetPixel(x0, y0, simd::PackRGBA(colorV));
+                        frame.SetDepth(x0, y0, z);
+                    }
                 }
 
                 if(x0 == x1 && y0 == y1) break;
 
                 int e2 = 2 * err;
-
                 if(e2 > -dy) {
                     err -= dy;
                     x0 += sx;
                 }
-
                 if(e2 < dx) {
                     err += dx;
                     y0 += sy;
                 }
+
+                t += step;
             }
         }
 
