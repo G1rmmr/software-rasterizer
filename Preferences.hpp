@@ -369,10 +369,8 @@ namespace preferences {
             Shader.NormalMap = &main::Frame.GetNormals();
             Shader.ColorMap = &main::Frame.GetColors();
 
-            Frame.Clear(0xFF000000);
-
-            const std::int32_t w = static_cast<std::int32_t>(WIDTH);
-            const std::int32_t h = static_cast<std::int32_t>(HEIGHT);
+            const std::int32_t w = static_cast<std::int32_t>(WIDTH * 0.5f);
+            const std::int32_t h = static_cast<std::int32_t>(HEIGHT * 0.5f);
             const std::size_t bufferSize = w * h;
 
             if(Shader.AOBuffer.size() != bufferSize) {
@@ -388,7 +386,9 @@ namespace preferences {
                 16);
 
             ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.ProcessBlur(y); }, 16);
-            ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.Composite(y); }, 16);
+
+            ParallelExecutor::GetInstance().ParallelFor(
+                0, static_cast<std::int32_t>(HEIGHT), [&](std::int32_t y) { Shader.Composite(y); }, 16);
 
             CurrFrame = &main::Frame;
         }
