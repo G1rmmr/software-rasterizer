@@ -272,11 +272,17 @@ namespace preferences {
         constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
         constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
 
-        namespace {
-            inline graphics::FrameBuffer Frame(SHADOW_WIDTH, SHADOW_HEIGHT);
-            inline graphics::Rasterizer Rasterizer(Frame);
-            inline shader::Shadow Shader;
+        inline graphics::FrameBuffer Frame(SHADOW_WIDTH, SHADOW_HEIGHT);
+        inline graphics::FrameBuffer StaticFrame(SHADOW_WIDTH, SHADOW_HEIGHT);
+        inline graphics::Rasterizer Rasterizer(Frame);
+        inline shader::Shadow Shader;
+        inline graphics::Frustum LightFrustum;
+
+        inline void UpdateLightFrustum() {
+            LightFrustum.Update(Uniform.LightSpace);
         }
+
+        inline bool IsStaticShadowDirty = true;
 
         inline void Render(const bool shouldRender = true) {
             if(!shouldRender) return;
@@ -298,6 +304,23 @@ namespace preferences {
             Shader.Uniform.LightSpace = Uniform.LightSpace;
             Shader.Uniform.View = lightView;
             Shader.Uniform.Proj = lightProj;
+
+            LightFrustum.Update(Uniform.LightSpace);
+
+            if(IsStaticShadowDirty) {
+                StaticFrame.Clear(0xFFFFFFFF);
+                for(const std::shared_ptr<Object>& object : Objects) {
+                    if(!object->IsStatic) continue;
+
+                    auto [worldCenter, worldRadius] = object->GetWorldBounds();
+                    if(!LightFrustum.IsSphereInside(worldCenter, worldRadius)) continue;
+
+                    Shader.Uniform.Model = object->Model;
+                    for(const graphics::Mesh& mesh : object->Meshes)
+                        Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR);
+                }
+                IsStaticShadowDirty = false;
+            }
 
             Frame.Clear(0xFFFFFFFF);
             for(const std::shared_ptr<Object> object : Objects) {

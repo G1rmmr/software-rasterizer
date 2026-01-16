@@ -35,6 +35,7 @@ int main() {
 
     std::shared_ptr<Object> model = std::make_shared<Diablo>();
     model->Create();
+    backWall->IsStatic = false;
     preferences::Objects.push_back(model);
 
     float angle = 0.f;

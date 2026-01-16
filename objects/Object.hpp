@@ -23,6 +23,7 @@ public:
     float LocalRadius = 0.f;
 
     bool ShouldRender = true;
+    bool IsStatic = true;
 
     inline Object() = default;
     inline virtual ~Object() = default;
