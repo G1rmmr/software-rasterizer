@@ -222,6 +222,16 @@ namespace preferences {
             std::fill(Buffer.begin(), Buffer.end(), 0xFF111111);
             PushHistory(::debug::Profiler.TotalFrameTime);
 
+            auto DrawIndicator = [&](std::int32_t x, std::int32_t y, bool isOn, std::uint32_t color) {
+                std::uint32_t finalColor = isOn ? color : (color & 0xFF333333);
+                for(std::int32_t i = 0; i < 10; ++i)
+                    for(std::int32_t j = 0; j < 10; ++j) Buffer[(y + i) * WIDTH + (x + j)] = finalColor;
+            };
+
+            DrawIndicator(10, 10, State.IsShowingShadowMap, 0xFFFFCC00);
+            DrawIndicator(30, 10, State.IsShowingSSAO, 0xFFFF00FF);
+            DrawIndicator(50, 10, State.IsShowingAA, 0xFF00FF00);
+
             float maxMs = 40.f;
             float xStep = static_cast<float>(WIDTH) / HISTORY_COUNT;
 
