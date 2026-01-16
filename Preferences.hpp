@@ -20,17 +20,17 @@
 #include "shaders/Post.hpp"
 #include "shaders/Shadow.hpp"
 
+#include "Profiler.hpp"
+
 #include "objects/Object.hpp"
 
 namespace preferences {
     const char* WINDOW_TITLE = "software-rasterizer";
+
     constexpr inline std::uint32_t COLOR = 0xFF000000;
 
-    constexpr inline std::uint32_t WIDTH = 800;
-    constexpr inline std::uint32_t HEIGHT = 800;
-
-    constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
-    constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
+    constexpr inline std::uint32_t WIDTH = 1280;
+    constexpr inline std::uint32_t HEIGHT = 720;
 
     constexpr inline float FOV_ANGLE = 45.f;
     constexpr inline float NEAR = 0.1f;
@@ -50,7 +50,9 @@ namespace preferences {
         graphics::PrimitiveType NowType = graphics::PrimitiveType::Triangles;
 
         bool IsLeftDown = false;
-        bool IsShowingShadowMap = false;
+        bool IsShowingShadowMap = true;
+        bool IsShowingSSAO = true;
+        bool IsShowingAA = true;
     } State;
 
     inline std::vector<std::shared_ptr<Object>> Objects;
@@ -91,8 +93,16 @@ namespace preferences {
                 }
                 break;
 
-            case KB_KEY_BACKSPACE:
+            case KB_KEY_Q:
                 if(isPressed) State.IsShowingShadowMap = !State.IsShowingShadowMap;
+                break;
+
+            case KB_KEY_W:
+                if(isPressed) State.IsShowingSSAO = !State.IsShowingSSAO;
+                break;
+
+            case KB_KEY_E:
+                if(isPressed) State.IsShowingAA = !State.IsShowingAA;
                 break;
 
             case KB_KEY_ESCAPE:
@@ -162,7 +172,96 @@ namespace preferences {
         CameraFrustum.Update(vp);
     }
 
+    namespace debug {
+        constexpr inline std::uint32_t WIDTH = 400;
+        constexpr inline std::uint32_t HEIGHT = 300;
+        constexpr inline std::int32_t HISTORY_COUNT = 100;
+
+        inline std::vector<std::uint32_t> Buffer;
+
+        inline std::vector<float> FrameHistory(HISTORY_COUNT, 0.f);
+        inline std::int32_t HistoryIdx = 0;
+
+        inline void PushHistory(const float ms) {
+            FrameHistory[HistoryIdx] = ms;
+            HistoryIdx = (HistoryIdx + 1) % HISTORY_COUNT;
+        }
+
+        inline mfb_window* Init() {
+            struct mfb_window* window = mfb_open_ex("profiler", WIDTH, HEIGHT, WF_RESIZABLE);
+            Buffer.resize(WIDTH * HEIGHT, 0xFF000000);
+            return window;
+        }
+
+        inline void Graph(std::int32_t x0, std::int32_t y0, std::int32_t x1, std::int32_t y1, std::uint32_t color) {
+            std::int32_t dx = std::abs(x1 - x0);
+            std::int32_t sx = x0 < x1 ? 1 : -1;
+
+            std::int32_t dy = -std::abs(y1 - y0);
+            std::int32_t sy = y0 < y1 ? 1 : -1;
+
+            std::int32_t err = dx + dy, e2;
+
+            while(true) {
+                if(x0 >= 0 && x0 < WIDTH && y0 >= 0 && y0 < HEIGHT) Buffer[y0 * WIDTH + x0] = color;
+                if(x0 == x1 && y0 == y1) break;
+                e2 = 2 * err;
+                if(e2 >= dy) {
+                    err += dy;
+                    x0 += sx;
+                }
+                if(e2 <= dx) {
+                    err += dx;
+                    y0 += sy;
+                }
+            }
+        }
+
+        inline void Draw(mfb_window* window, bool shouldRender = true) {
+            if(!shouldRender) return;
+            std::fill(Buffer.begin(), Buffer.end(), 0xFF111111);
+            PushHistory(::debug::Profiler.TotalFrameTime);
+
+            float maxMs = 40.f;
+            float xStep = static_cast<float>(WIDTH) / HISTORY_COUNT;
+
+            auto DrawHorizontalLine = [&](float ms, std::int32_t color) {
+                std::int32_t y = HEIGHT - static_cast<std::int32_t>((ms / maxMs) * HEIGHT);
+                if(y < 0 || y >= HEIGHT) return;
+                for(std::int32_t x = 0; x < WIDTH; ++x) Buffer[y * WIDTH + x] = color;
+            };
+
+            DrawHorizontalLine(16.6f, 0xFF555555);
+            DrawHorizontalLine(33.3f, 0xFF882222);
+
+            for(std::int32_t i = 0; i < HISTORY_COUNT; i += 10) {
+                std::int32_t x = static_cast<int>(i * xStep);
+                for(std::int32_t y = 0; y < HEIGHT; ++y)
+                    if(y % 4 == 0) Buffer[y * WIDTH + x] = 0xFF333333;
+            }
+
+            for(std::int32_t i = 0; i < HISTORY_COUNT - 1; ++i) {
+                std::int32_t idx1 = (HistoryIdx + i) % HISTORY_COUNT;
+                std::int32_t idx2 = (HistoryIdx + i + 1) % HISTORY_COUNT;
+
+                std::int32_t y0 =
+                    HEIGHT - static_cast<std::int32_t>((std::min(FrameHistory[idx1], maxMs) / maxMs) * HEIGHT);
+
+                std::int32_t y1 =
+                    HEIGHT - static_cast<std::int32_t>((std::min(FrameHistory[idx2], maxMs) / maxMs) * HEIGHT);
+
+                uint32_t color = (FrameHistory[idx2] > 16.6f) ? 0xFFFF0000 : 0xFF00FF00;
+                Graph(static_cast<std::int32_t>(i * xStep), y0, static_cast<std::int32_t>((i + 1) * xStep), y1, color);
+            }
+
+            mfb_update(window, Buffer.data());
+        }
+    }
+
     namespace pre {
+        constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
+        constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
+
         namespace {
             inline graphics::FrameBuffer Frame(SHADOW_WIDTH, SHADOW_HEIGHT);
             inline graphics::Rasterizer Rasterizer(Frame);
@@ -212,8 +311,8 @@ namespace preferences {
             if(!shouldRender) return;
 
             Shader.ShadowMap = &pre::Frame.GetDepthes();
-            Shader.ShadowMapWidth = static_cast<float>(SHADOW_WIDTH);
-            Shader.ShadowMapHeight = static_cast<float>(SHADOW_HEIGHT);
+            Shader.ShadowMapWidth = static_cast<float>(pre::SHADOW_WIDTH);
+            Shader.ShadowMapHeight = static_cast<float>(pre::SHADOW_HEIGHT);
 
             Frame.Clear(preferences::COLOR);
             for(const std::shared_ptr<Object> object : Objects) {
@@ -280,6 +379,8 @@ namespace preferences {
 
             ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.ProcessBlur(y); }, 16);
             ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.Composite(y); }, 16);
+
+            CurrFrame = &main::Frame;
         }
     }
 }

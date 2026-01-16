@@ -1,4 +1,5 @@
-﻿#include <cstdio>
+﻿#include <chrono>
+#include <cstdio>
 #include <memory>
 #include <vector>
 
@@ -14,6 +15,9 @@
 int main() {
     struct mfb_window* window = preferences::Init();
     if(!window) return -1;
+
+    struct mfb_window* debugger = preferences::debug::Init();
+    if(!debugger) return -1;
 
     std::shared_ptr<Plane> backWall = std::make_shared<Plane>();
     backWall->Create();
@@ -42,12 +46,37 @@ int main() {
 
         model->CalculateBounds();
 
-        preferences::pre::Render();
-        preferences::main::Render();
-        preferences::post::Render();
+        std::chrono::steady_clock::time_point frameStart = std::chrono::high_resolution_clock::now();
 
-        preferences::CurrFrame->AntiAlias();
+        std::chrono::steady_clock::time_point t0 = std::chrono::high_resolution_clock::now();
+        preferences::pre::Render(preferences::State.IsShowingShadowMap);
+        debug::Profiler.ShadowPassTime =
+            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+
+        std::chrono::steady_clock::time_point t1 = std::chrono::high_resolution_clock::now();
+        preferences::main::Render();
+        debug::Profiler.MainPassTime =
+            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t1).count();
+
+        std::chrono::steady_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+        preferences::post::Render(preferences::State.IsShowingSSAO);
+        debug::Profiler.PostPassTime =
+            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t2).count();
+
+        std::chrono::steady_clock::time_point t3 = std::chrono::high_resolution_clock::now();
+        preferences::CurrFrame->AntiAlias(preferences::State.IsShowingAA);
+        debug::Profiler.AAPassTime =
+            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t3).count();
+
+        debug::Profiler.TotalFrameTime =
+            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - frameStart).count();
+
+        preferences::debug::Draw(debugger);
+
         int state = mfb_update(window, preferences::CurrFrame->GetColor());
+
+        if(mfb_update(debugger, preferences::debug::Buffer.data()) < 0) debugger = nullptr;
+
         if(state < 0) {
             window = nullptr;
             break;
