@@ -317,12 +317,12 @@ namespace graphics {
             std::int32_t x = static_cast<std::int32_t>(std::round(v.Pos.X));
             std::int32_t y = static_cast<std::int32_t>(std::round(v.Pos.Y));
 
-            if(frame.TestDepth(x, y, v.Pos.Z)) {
-                simd::Floats colorV = v.Color.V;
+            if(x < 0 || x >= width || y < 0 || y >= height) return;
 
-                colorV = simd::Mul(colorV, simd::Set(255.f));
-                frame.SetPixel(x, y, simd::PackRGBA(colorV));
-            }
+            simd::Floats colorV = v.Color.V;
+
+            colorV = simd::Mul(colorV, simd::Set(255.f));
+            frame.SetPixel(x, y, simd::PackRGBA(colorV));
         }
 
         // Bresenham's Line Algorithm

@@ -19,6 +19,7 @@
 #include "shaders/Model.hpp"
 #include "shaders/Post.hpp"
 #include "shaders/Shadow.hpp"
+#include "shaders/Toon.hpp"
 
 #include "Profiler.hpp"
 
@@ -53,6 +54,7 @@ namespace preferences {
         bool IsShowingShadowMap = true;
         bool IsShowingSSAO = true;
         bool IsShowingAA = true;
+        bool IsShowingToon = false;
     } State;
 
     inline std::vector<std::shared_ptr<Object>> Objects;
@@ -103,6 +105,10 @@ namespace preferences {
 
             case KB_KEY_E:
                 if(isPressed) State.IsShowingAA = !State.IsShowingAA;
+                break;
+
+            case KB_KEY_R:
+                if(isPressed) State.IsShowingToon = !State.IsShowingToon;
                 break;
 
             case KB_KEY_ESCAPE:
@@ -344,16 +350,27 @@ namespace preferences {
     namespace main {
         inline graphics::FrameBuffer Frame(WIDTH, HEIGHT);
         inline graphics::Rasterizer Rasterizer(Frame);
-        inline shader::Model Shader;
+        inline shader::Model ModelShader;
+        inline shader::Toon ToonShader;
 
         inline std::shared_future<void> Render(std::shared_future<void> shadowDependency) {
-            Shader.ShadowMap = nullptr;
+            std::vector<float>* shadowMap = nullptr;
+            float smW = 0.f;
+            float smH = 0.f;
 
             if(State.IsShowingShadowMap) {
-                Shader.ShadowMap = &pre::Frame.GetDepthes();
-                Shader.ShadowMapWidth = static_cast<float>(pre::SHADOW_WIDTH);
-                Shader.ShadowMapHeight = static_cast<float>(pre::SHADOW_HEIGHT);
+                shadowMap = &pre::Frame.GetDepthes();
+                smW = static_cast<float>(pre::SHADOW_WIDTH);
+                smH = static_cast<float>(pre::SHADOW_HEIGHT);
             }
+
+            ModelShader.ShadowMap = shadowMap;
+            ModelShader.ShadowMapWidth = smW;
+            ModelShader.ShadowMapHeight = smH;
+
+            ToonShader.ShadowMap = shadowMap;
+            ToonShader.ShadowMapWidth = smW;
+            ToonShader.ShadowMapHeight = smH;
 
             Frame.Clear(preferences::COLOR);
 
@@ -367,18 +384,28 @@ namespace preferences {
 
                 Uniform.Model = object->Model;
                 Uniform.DepthBias = 0.f;
-                Shader.Uniform = Uniform;
 
-                for(const graphics::Mesh& mesh : object->Meshes) {
-                    Shader.DiffuseMap = mesh.DiffuseMap;
-                    Shader.NormalMap = mesh.NormalMap;
-                    Shader.SpecularMap = mesh.SpecularMap;
-                    Shader.GlossMap = mesh.GlossMap;
-                    Shader.GlowMap = mesh.GlowMap;
-                    Shader.SSSMap = mesh.SSSMap;
+                if (State.IsShowingToon) {
+                    ToonShader.Uniform = Uniform;
+                    
+                    for(const graphics::Mesh& mesh : object->Meshes) {
+                        ToonShader.DiffuseMap = mesh.DiffuseMap;
+                        lastTask = Rasterizer.Render(ToonShader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType, shadowDependency);
+                    }
+                } 
+                else {
+                    ModelShader.Uniform = Uniform;
 
-                    lastTask = Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType,
-                                                 shadowDependency);
+                    for(const graphics::Mesh& mesh : object->Meshes) {
+                        ModelShader.DiffuseMap = mesh.DiffuseMap;
+                        ModelShader.NormalMap = mesh.NormalMap;
+                        ModelShader.SpecularMap = mesh.SpecularMap;
+                        ModelShader.GlossMap = mesh.GlossMap;
+                        ModelShader.GlowMap = mesh.GlowMap;
+                        ModelShader.SSSMap = mesh.SSSMap;
+
+                        lastTask = Rasterizer.Render(ModelShader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType, shadowDependency);
+                    }
                 }
             }
 
