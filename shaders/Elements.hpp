@@ -34,6 +34,8 @@ namespace shader {
     };
 
     struct Uniforms {
+        std::vector<math::Vector> KernelSamples;
+
         math::Matrix Model;
         math::Matrix View;
         math::Matrix Proj;
@@ -50,6 +52,6 @@ namespace shader {
         float BiasAO = 0.05f;
         float StrengthAO = 1.5f;
 
-        std::int32_t KernelSizeAO = 16;
+        std::uint8_t KernelSizeAO = 4;
     };
 }

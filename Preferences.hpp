@@ -401,6 +401,12 @@ namespace preferences {
                 Shader.TempBuffer.resize(bufferSize);
             }
 
+            Shader.Uniform.KernelSizeAO = 16;
+
+            if(Shader.Uniform.KernelSamples.empty() ||
+               Shader.Uniform.KernelSamples.size() != Shader.Uniform.KernelSizeAO)
+                Shader.GenerateKernel(Shader.Uniform);
+
             ParallelExecutor::GetInstance().ParallelFor(
                 0, h,
                 [&](std::int32_t y) {

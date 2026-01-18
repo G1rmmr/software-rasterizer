@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <vector>
 
 #include "../math/Math.hpp"
@@ -11,6 +12,8 @@
 #include "ParallelExecutor.hpp"
 
 namespace graphics {
+    constexpr std::size_t BATCH_SIZE = 4095;
+
     enum class PrimitiveType { Points, Lines, Triangles };
 
     class Rasterizer {
@@ -35,15 +38,31 @@ namespace graphics {
                                                     const PrimitiveType type = PrimitiveType::Triangles,
                                                     std::size_t maxIndices = 0) {
             if(tileGrid.empty()) initTiles();
-            for(auto& tile : tileGrid) tile.indices.clear();
 
             std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size()) ? indices.size() : maxIndices;
             std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
 
-            std::vector<shader::Varyings> screenVertices =
-                processVertices<Shader>(shader, vertices, limitedIndices, near);
+            std::future<void> rasterTask;
 
-            dispatchPrimitives<Shader>(shader, screenVertices, limitedIndices, type);
+            for(std::size_t offset = 0; offset < actualLimit; offset += BATCH_SIZE) {
+                std::size_t count = std::min(BATCH_SIZE, actualLimit - offset);
+
+                std::vector<std::uint32_t> batchIndices(limitedIndices.begin() + offset,
+                                                        limitedIndices.begin() + offset + count);
+
+                std::vector<shader::Varyings> screenVertices =
+                    processVertices<Shader>(shader, vertices, batchIndices, near);
+
+                if(rasterTask.valid()) rasterTask.get();
+
+                rasterTask = std::async(std::launch::async, [this, &shader, type, verts = std::move(screenVertices),
+                                                             idxs = std::move(batchIndices)]() mutable {
+                    for(auto& tile : tileGrid) tile.indices.clear();
+                    dispatchPrimitives<Shader>(shader, verts, idxs, type);
+                });
+            }
+
+            if(rasterTask.valid()) rasterTask.get();
         }
 
     private:
@@ -159,13 +178,12 @@ namespace graphics {
             const std::size_t inSize = in.size();
             std::vector<shader::Varyings> out(inSize);
 
+            for(std::size_t i = 0; i < inSize; ++i) out[i] = shader.Process(in[i]);
+
             std::vector<shader::Varyings> finalVaryings;
             std::vector<std::uint32_t> finalIndices;
             finalVaryings.reserve(indices.size());
             finalIndices.reserve(indices.size());
-
-            ParallelExecutor::GetInstance().ParallelFor(
-                0, inSize, [&](std::size_t i) { out[i] = shader.Process(in[i]); }, 1);
 
             std::size_t numTriangles = indices.size() / 3;
             for(size_t i = 0; i < numTriangles; ++i) {

@@ -33,7 +33,7 @@ int main() {
     plane->CalculateBounds();
     preferences::Objects.push_back(plane);
 
-    std::shared_ptr<Object> model = std::make_shared<Diablo>();
+    std::shared_ptr<Object> model = std::make_shared<African>();
     model->Create();
     backWall->IsStatic = false;
     preferences::Objects.push_back(model);

@@ -60,9 +60,6 @@ namespace graphics {
         }
 
         ENGINE_INLINE void SetPixel(const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) noexcept {
-            if(x < 0 || x >= width || y < 0 || y >= height) [[unlikely]]
-                return;
-
             colors[y * width + x] = color;
         }
 
@@ -72,12 +69,10 @@ namespace graphics {
         }
 
         ENGINE_INLINE bool TestDepth(const std::uint32_t x, const std::uint32_t y, const float z) const noexcept {
-            if(x >= width || y >= height) return false;
             return z < depthes[y * width + x];
         }
 
         ENGINE_INLINE void SetDepth(const std::uint32_t x, const std::uint32_t y, const float z) noexcept {
-            if(x >= width || y >= height) return;
             depthes[y * width + x] = z;
         }
 

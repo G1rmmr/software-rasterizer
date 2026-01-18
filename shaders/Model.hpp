@@ -61,9 +61,13 @@ namespace shader {
             }
 
             math::Vector lightDir = Uniform.LightDir;
-            float shadow = calculateShadow(worldPos, normDir, lightDir);
+            float nDotL = std::max(normDir.Dot(lightDir), 0.f);
 
-            float diff = std::max(normDir.Dot(lightDir), 0.f) * shadow;
+            float shadow = 1.f;
+
+            if(nDotL > 0.f) shadow = calculateShadow(worldPos, normDir, lightDir);
+
+            float diff = nDotL * shadow;
             float shininess = 64.f;
             if(GlossMap) {
                 float glossSample = GlossMap->Sample(uv.X, uv.Y).X;
