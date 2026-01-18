@@ -49,25 +49,18 @@ int main() {
 
         std::chrono::steady_clock::time_point frameStart = std::chrono::high_resolution_clock::now();
 
-        std::chrono::steady_clock::time_point t0 = std::chrono::high_resolution_clock::now();
-        preferences::pre::Render(preferences::State.IsShowingShadowMap);
-        debug::Profiler.ShadowPassTime =
-            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+        auto shadowFuture = debug::Measure(debug::Profiler.ShadowPassTime, [&]() {
+            return preferences::pre::Render(preferences::State.IsShowingShadowMap);
+        });
 
-        std::chrono::steady_clock::time_point t1 = std::chrono::high_resolution_clock::now();
-        preferences::main::Render();
-        debug::Profiler.MainPassTime =
-            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t1).count();
+        auto mainFuture =
+            debug::Measure(debug::Profiler.MainPassTime, [&]() { return preferences::main::Render(shadowFuture); });
 
-        std::chrono::steady_clock::time_point t2 = std::chrono::high_resolution_clock::now();
-        preferences::post::Render(preferences::State.IsShowingSSAO);
-        debug::Profiler.PostPassTime =
-            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t2).count();
+        debug::Measure(debug::Profiler.PostPassTime,
+                       [&]() { preferences::post::Render(mainFuture, preferences::State.IsShowingSSAO); });
 
-        std::chrono::steady_clock::time_point t3 = std::chrono::high_resolution_clock::now();
-        preferences::CurrFrame->AntiAlias(preferences::State.IsShowingAA);
-        debug::Profiler.AAPassTime =
-            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - t3).count();
+        debug::Measure(debug::Profiler.AAPassTime,
+                       [&]() { preferences::CurrFrame->AntiAlias(preferences::State.IsShowingAA); });
 
         debug::Profiler.TotalFrameTime =
             std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - frameStart).count();

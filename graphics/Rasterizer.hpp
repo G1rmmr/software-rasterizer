@@ -24,25 +24,26 @@ namespace graphics {
               height(static_cast<float>(frame.GetHeight())) {}
 
         template <typename Shader>
-        ENGINE_INLINE void ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
-                                                    const PrimitiveType type = PrimitiveType::Triangles) {
+        ENGINE_INLINE std::shared_future<void>
+            ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                                     const PrimitiveType type = PrimitiveType::Triangles) {
             std::vector<std::uint32_t> indices(vertices.size());
             for(size_t i = 0; i < vertices.size(); ++i) indices[i] = i;
-
-            Render(shader, vertices, indices, type);
+            return Render(shader, vertices, indices, type);
         }
 
         template <typename Shader>
-        ENGINE_INLINE void ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
-                                                    const std::vector<std::uint32_t>& indices, const float near,
-                                                    const PrimitiveType type = PrimitiveType::Triangles,
-                                                    std::size_t maxIndices = 0) {
+        ENGINE_INLINE std::shared_future<void>
+            ENGINE_VECTORCALL Render(const Shader& shader, const std::vector<shader::Vertex>& vertices,
+                                     const std::vector<std::uint32_t>& indices, const float near,
+                                     const PrimitiveType type = PrimitiveType::Triangles,
+                                     std::shared_future<void> dependency = {}, std::size_t maxIndices = 0) {
             if(tileGrid.empty()) initTiles();
 
             std::size_t actualLimit = (maxIndices == 0 || maxIndices > indices.size()) ? indices.size() : maxIndices;
             std::vector<std::uint32_t> limitedIndices(indices.begin(), indices.begin() + actualLimit);
 
-            std::future<void> rasterTask;
+            bool isFirstBatch = true;
 
             for(std::size_t offset = 0; offset < actualLimit; offset += BATCH_SIZE) {
                 std::size_t count = std::min(BATCH_SIZE, actualLimit - offset);
@@ -55,23 +56,30 @@ namespace graphics {
 
                 if(rasterTask.valid()) rasterTask.get();
 
-                rasterTask = std::async(std::launch::async, [this, &shader, type, verts = std::move(screenVertices),
+                if(isFirstBatch && dependency.valid()) {
+                    dependency.get();
+                    isFirstBatch = false;
+                }
+
+                rasterTask = std::async(std::launch::async, [this, shader, type, verts = std::move(screenVertices),
                                                              idxs = std::move(batchIndices)]() mutable {
-                    for(auto& tile : tileGrid) tile.indices.clear();
-                    dispatchPrimitives<Shader>(shader, verts, idxs, type);
-                });
+                                 for(auto& tile : tileGrid) tile.Indices.clear();
+                                 dispatchPrimitives<Shader>(shader, verts, idxs, type);
+                             }).share();
             }
 
-            if(rasterTask.valid()) rasterTask.get();
+            return rasterTask;
         }
 
     private:
         static constexpr std::uint8_t TILE_SIZE = 32;
 
         struct Tile {
-            std::vector<std::uint32_t> indices;
-            SpinLock mutex;
+            std::vector<std::uint32_t> Indices;
+            SpinLock Mutex;
         };
+
+        std::shared_future<void> rasterTask;
 
         std::vector<Tile> tileGrid;
         FrameBuffer& frame;
@@ -266,8 +274,8 @@ namespace graphics {
                             for(std::int32_t tx = startTX; tx <= endTX; ++tx) {
                                 Tile& tile = tileGrid[ty * tilesX + tx];
 
-                                std::lock_guard<SpinLock> lock(tile.mutex);
-                                tile.indices.push_back(static_cast<uint32_t>(i));
+                                std::lock_guard<SpinLock> lock(tile.Mutex);
+                                tile.Indices.push_back(static_cast<uint32_t>(i));
                             }
                         }
                     },
@@ -278,7 +286,7 @@ namespace graphics {
                     0, tileGrid.size(),
                     [&](std::size_t tileIdx) {
                         Tile& tile = tileGrid[tileIdx];
-                        if(tile.indices.empty()) return;
+                        if(tile.Indices.empty()) return;
 
                         std::size_t tx = tileIdx % tilesX;
                         std::size_t ty = tileIdx / tilesX;
@@ -289,7 +297,7 @@ namespace graphics {
                         tileClip.MaxX = std::min((std::size_t)width - 1, (tx + 1) * TILE_SIZE - 1);
                         tileClip.MaxY = std::min((std::size_t)height - 1, (ty + 1) * TILE_SIZE - 1);
 
-                        for(const std::uint32_t triID : tile.indices) {
+                        for(const std::uint32_t triID : tile.Indices) {
                             std::size_t idx = triID * 3;
                             const shader::Varyings& v0 = varyings[indices[idx]];
                             const shader::Varyings& v1 = varyings[indices[idx + 1]];

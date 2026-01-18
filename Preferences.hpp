@@ -272,6 +272,8 @@ namespace preferences {
         constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
         constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
 
+        inline std::future<void> StaticShadowTask;
+
         inline graphics::FrameBuffer Frame(SHADOW_WIDTH, SHADOW_HEIGHT);
         inline graphics::FrameBuffer StaticFrame(SHADOW_WIDTH, SHADOW_HEIGHT);
         inline graphics::Rasterizer Rasterizer(Frame);
@@ -284,8 +286,8 @@ namespace preferences {
 
         inline bool IsStaticShadowDirty = true;
 
-        inline void Render(const bool shouldRender = true) {
-            if(!shouldRender) return;
+        inline std::shared_future<void> Render(const bool shouldRender = true) {
+            if(!shouldRender) return {};
 
             math::Vector lightDir = Uniform.LightDir.Norm();
             math::Vector lightPos = lightDir * 100.f;
@@ -317,21 +319,25 @@ namespace preferences {
 
                     Shader.Uniform.Model = object->Model;
                     for(const graphics::Mesh& mesh : object->Meshes)
-                        Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR);
+                        Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR).get();
                 }
                 IsStaticShadowDirty = false;
             }
 
             Frame.Clear(0xFFFFFFFF);
+
+            std::shared_future<void> lastTask;
             for(const std::shared_ptr<Object> object : Objects) {
                 if(!object->ShouldRender) continue;
 
                 Shader.Uniform.Model = object->Model;
                 for(const graphics::Mesh& mesh : object->Meshes)
-                    Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, graphics::PrimitiveType::Triangles);
+                    lastTask = Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR,
+                                                 graphics::PrimitiveType::Triangles);
             }
 
             CurrFrame = &Frame;
+            return lastTask;
         }
     }
 
@@ -340,14 +346,17 @@ namespace preferences {
         inline graphics::Rasterizer Rasterizer(Frame);
         inline shader::Model Shader;
 
-        inline void Render(const bool shouldRender = true) {
-            if(!shouldRender) return;
+        inline std::shared_future<void> Render(std::shared_future<void> shadowDependency,
+                                               const bool shouldRender = true) {
+            if(!shouldRender) return {};
 
             Shader.ShadowMap = &pre::Frame.GetDepthes();
             Shader.ShadowMapWidth = static_cast<float>(pre::SHADOW_WIDTH);
             Shader.ShadowMapHeight = static_cast<float>(pre::SHADOW_HEIGHT);
 
             Frame.Clear(preferences::COLOR);
+
+            std::shared_future<void> lastTask;
             for(const std::shared_ptr<Object> object : Objects) {
                 if(!object->ShouldRender) continue;
 
@@ -367,11 +376,13 @@ namespace preferences {
                     Shader.GlowMap = mesh.GlowMap;
                     Shader.SSSMap = mesh.SSSMap;
 
-                    Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType);
+                    lastTask = Rasterizer.Render(Shader, mesh.Vertices, mesh.Indices, NEAR, preferences::State.NowType,
+                                                 shadowDependency);
                 }
             }
 
             CurrFrame = &Frame;
+            return lastTask;
         }
     }
 
@@ -380,8 +391,9 @@ namespace preferences {
         inline graphics::Rasterizer Rasterizer(Frame);
         inline shader::Post Shader;
 
-        inline void Render(const bool shouldRender = true) {
+        inline void Render(std::shared_future<void> mainDependency, const bool shouldRender = true) {
             if(!shouldRender) return;
+            if(mainDependency.valid()) mainDependency.get();
 
             Shader.Uniform = Uniform;
 
@@ -401,7 +413,7 @@ namespace preferences {
                 Shader.TempBuffer.resize(bufferSize);
             }
 
-            Shader.Uniform.KernelSizeAO = 16;
+            Shader.Uniform.KernelSizeAO = 8;
 
             if(Shader.Uniform.KernelSamples.empty() ||
                Shader.Uniform.KernelSamples.size() != Shader.Uniform.KernelSizeAO)
