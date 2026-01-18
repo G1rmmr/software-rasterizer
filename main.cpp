@@ -33,7 +33,7 @@ int main() {
     plane->CalculateBounds();
     preferences::Objects.push_back(plane);
 
-    std::shared_ptr<Object> model = std::make_shared<African>();
+    std::shared_ptr<Object> model = std::make_shared<Diablo>();
     model->Create();
     backWall->IsStatic = false;
     preferences::Objects.push_back(model);
@@ -49,15 +49,12 @@ int main() {
 
         std::chrono::steady_clock::time_point frameStart = std::chrono::high_resolution_clock::now();
 
-        auto shadowFuture = debug::Measure(debug::Profiler.ShadowPassTime, [&]() {
-            return preferences::pre::Render(preferences::State.IsShowingShadowMap);
-        });
-
+        auto shadowFuture =
+            debug::Measure(debug::Profiler.ShadowPassTime, [&]() { return preferences::pre::Render(); });
         auto mainFuture =
             debug::Measure(debug::Profiler.MainPassTime, [&]() { return preferences::main::Render(shadowFuture); });
 
-        debug::Measure(debug::Profiler.PostPassTime,
-                       [&]() { preferences::post::Render(mainFuture, preferences::State.IsShowingSSAO); });
+        debug::Measure(debug::Profiler.PostPassTime, [&]() { preferences::post::Render(mainFuture); });
 
         debug::Measure(debug::Profiler.AAPassTime,
                        [&]() { preferences::CurrFrame->AntiAlias(preferences::State.IsShowingAA); });

@@ -130,12 +130,16 @@ namespace graphics {
             const float normalThreshold = 0.95f;
 
             ParallelExecutor::GetInstance().ParallelFor(
-                1, height - 1,
+                0, height,
                 [&](std::size_t y) {
-                    for(std::uint32_t x = 1; x < width - 1; ++x) {
+                    for(std::uint32_t x = 0; x < width; ++x) {
                         std::uint32_t idx = y * width + x;
                         std::uint32_t current = colors[idx];
 
+                        if(x == 0 || x == width - 1 || y == 0 || y == height - 1) {
+                            dst[idx] = current;
+                            continue;
+                        }
                         std::uint32_t up = idx - width;
                         std::uint32_t down = idx + width;
                         std::uint32_t left = idx - 1;
@@ -163,7 +167,8 @@ namespace graphics {
                         dst[idx] = mixColors(current, cUp, cDown, cLeft, cRight);
                     }
                 },
-                16);
+                64); // Chunk Size는 64 추천
+
             UpdateBuffer(dst);
         }
 

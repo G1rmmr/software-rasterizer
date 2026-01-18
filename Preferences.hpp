@@ -269,8 +269,8 @@ namespace preferences {
     }
 
     namespace pre {
-        constexpr inline std::uint32_t SHADOW_WIDTH = 1024;
-        constexpr inline std::uint32_t SHADOW_HEIGHT = 1024;
+        constexpr inline std::uint32_t SHADOW_WIDTH = 512;
+        constexpr inline std::uint32_t SHADOW_HEIGHT = 512;
 
         inline std::future<void> StaticShadowTask;
 
@@ -286,8 +286,8 @@ namespace preferences {
 
         inline bool IsStaticShadowDirty = true;
 
-        inline std::shared_future<void> Render(const bool shouldRender = true) {
-            if(!shouldRender) return {};
+        inline std::shared_future<void> Render() {
+            if(!State.IsShowingShadowMap) return {};
 
             math::Vector lightDir = Uniform.LightDir.Norm();
             math::Vector lightPos = lightDir * 100.f;
@@ -346,13 +346,14 @@ namespace preferences {
         inline graphics::Rasterizer Rasterizer(Frame);
         inline shader::Model Shader;
 
-        inline std::shared_future<void> Render(std::shared_future<void> shadowDependency,
-                                               const bool shouldRender = true) {
-            if(!shouldRender) return {};
+        inline std::shared_future<void> Render(std::shared_future<void> shadowDependency) {
+            Shader.ShadowMap = nullptr;
 
-            Shader.ShadowMap = &pre::Frame.GetDepthes();
-            Shader.ShadowMapWidth = static_cast<float>(pre::SHADOW_WIDTH);
-            Shader.ShadowMapHeight = static_cast<float>(pre::SHADOW_HEIGHT);
+            if(State.IsShowingShadowMap) {
+                Shader.ShadowMap = &pre::Frame.GetDepthes();
+                Shader.ShadowMapWidth = static_cast<float>(pre::SHADOW_WIDTH);
+                Shader.ShadowMapHeight = static_cast<float>(pre::SHADOW_HEIGHT);
+            }
 
             Frame.Clear(preferences::COLOR);
 
@@ -391,9 +392,9 @@ namespace preferences {
         inline graphics::Rasterizer Rasterizer(Frame);
         inline shader::Post Shader;
 
-        inline void Render(std::shared_future<void> mainDependency, const bool shouldRender = true) {
-            if(!shouldRender) return;
+        inline void Render(std::shared_future<void> mainDependency) {
             if(mainDependency.valid()) mainDependency.get();
+            if(!State.IsShowingSSAO) return;
 
             Shader.Uniform = Uniform;
 
@@ -413,8 +414,6 @@ namespace preferences {
                 Shader.TempBuffer.resize(bufferSize);
             }
 
-            Shader.Uniform.KernelSizeAO = 8;
-
             if(Shader.Uniform.KernelSamples.empty() ||
                Shader.Uniform.KernelSamples.size() != Shader.Uniform.KernelSizeAO)
                 Shader.GenerateKernel(Shader.Uniform);
@@ -424,12 +423,12 @@ namespace preferences {
                 [&](std::int32_t y) {
                     for(std::int32_t x = 0; x < w; ++x) Shader.AOBuffer[y * w + x] = Shader.ComputeRawAO(x, y);
                 },
-                16);
+                64);
 
-            ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.ProcessBlur(y); }, 16);
+            ParallelExecutor::GetInstance().ParallelFor(0, h, [&](std::int32_t y) { Shader.ProcessBlur(y); }, 64);
 
             ParallelExecutor::GetInstance().ParallelFor(
-                0, static_cast<std::int32_t>(HEIGHT), [&](std::int32_t y) { Shader.Composite(y); }, 16);
+                0, static_cast<std::int32_t>(HEIGHT), [&](std::int32_t y) { Shader.Composite(y); }, 64);
 
             CurrFrame = &main::Frame;
         }

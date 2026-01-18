@@ -64,23 +64,40 @@ namespace shader {
             float nDotL = std::max(normDir.Dot(lightDir), 0.f);
 
             float shadow = 1.f;
-
             if(nDotL > 0.f) shadow = calculateShadow(worldPos, normDir, lightDir);
 
             float diff = nDotL * shadow;
-            float shininess = 64.f;
-            if(GlossMap) {
-                float glossSample = GlossMap->Sample(uv.X, uv.Y).X;
-                shininess = std::pow(2.f, 1.f + glossSample * 10.f);
-            }
 
             float spec = 0.f;
             if(diff > 0.f) {
                 math::Vector viewDir = (Uniform.CameraPos - worldPos).Norm();
                 math::Vector halfDir = (lightDir + viewDir).Norm();
+                float halfDot = std::max(normDir.Dot(halfDir), 0.f);
 
-                spec = std::pow(std::max(normDir.Dot(halfDir), 0.f), shininess);
-                spec *= specIntensity;
+                float glossVal = 0.f;
+                if(GlossMap) glossVal = GlossMap->Sample(uv.X, uv.Y).X;
+
+                float p2 = halfDot * halfDot;
+                float p4 = p2 * p2;
+                float p16 = p4 * p4;
+                float p64 = p16 * p16;
+                float p256 = p64 * p64;
+
+                float finalSpecVal = 0.f;
+
+                if(glossVal < 0.33f) {
+                    float t = glossVal * 3.f;
+                    finalSpecVal = p2 * (1.f - t) + p16 * t;
+                }
+                else if(glossVal < 0.66f) {
+                    float t = (glossVal - 0.33f) * 3.f;
+                    finalSpecVal = p16 * (1.f - t) + p64 * t;
+                }
+                else {
+                    float t = (glossVal - 0.66f) * 3.f;
+                    finalSpecVal = p64 * (1.f - t) + p256 * t;
+                }
+                spec = finalSpecVal * specIntensity;
             }
             spec *= shadow;
 
@@ -156,7 +173,7 @@ namespace shader {
             int blockers = 0;
             float searchWidth = 10.f / ShadowMapWidth;
 
-            for(int i = 0; i < 4; ++i) {
+            for(int i = 0; i < 2; ++i) {
                 float z = ShadowMap->at(getShadowIndex(projCoords.X + poissonDisk[i].X * searchWidth,
                                                        projCoords.Y + poissonDisk[i].Y * searchWidth));
                 if(z < currentDepth - bias) {
@@ -174,7 +191,7 @@ namespace shader {
             float shadow = 0.f;
             int samples = 0;
 
-            for(int i = 0; i < 4; ++i) {
+            for(int i = 0; i < 2; ++i) {
                 float pcfDepth = ShadowMap->at(getShadowIndex(projCoords.X + poissonDisk[i].X * filterRadius,
                                                               projCoords.Y + poissonDisk[i].Y * filterRadius));
                 shadow += (currentDepth - bias > pcfDepth) ? 0.f : 1.f;

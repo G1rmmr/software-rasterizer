@@ -72,7 +72,7 @@ namespace graphics {
         }
 
     private:
-        static constexpr std::uint8_t TILE_SIZE = 32;
+        static constexpr std::uint8_t TILE_SIZE = 64;
 
         struct Tile {
             std::vector<std::uint32_t> Indices;
