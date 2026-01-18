@@ -126,23 +126,41 @@ namespace graphics {
 
             std::vector<std::uint32_t> dst(width * height);
 
+            const float depthThreshold = 0.05f;
+            const float normalThreshold = 0.95f;
+
             ParallelExecutor::GetInstance().ParallelFor(
                 1, height - 1,
                 [&](std::size_t y) {
                     for(std::uint32_t x = 1; x < width - 1; ++x) {
                         std::uint32_t idx = y * width + x;
-
                         std::uint32_t current = colors[idx];
 
-                        std::uint32_t up = colors[idx - width];
-                        std::uint32_t down = colors[idx + width];
-                        std::uint32_t left = colors[idx - 1];
-                        std::uint32_t right = colors[idx + 1];
+                        std::uint32_t up = idx - width;
+                        std::uint32_t down = idx + width;
+                        std::uint32_t left = idx - 1;
+                        std::uint32_t right = idx + 1;
 
-                        std::uint32_t diff = colorDiff(current, up) + colorDiff(current, down) +
-                                             colorDiff(current, left) + colorDiff(current, right);
+                        bool edgeDetected = false;
+                        if(isEdge(idx, up, depthThreshold, normalThreshold))
+                            edgeDetected = true;
+                        else if(isEdge(idx, down, depthThreshold, normalThreshold))
+                            edgeDetected = true;
+                        else if(isEdge(idx, left, depthThreshold, normalThreshold))
+                            edgeDetected = true;
+                        else if(isEdge(idx, right, depthThreshold, normalThreshold))
+                            edgeDetected = true;
 
-                        dst[idx] = diff > threshold ? mixColors(current, up, down, left, right) : current;
+                        if(!edgeDetected) {
+                            dst[idx] = current;
+                            continue;
+                        }
+
+                        std::uint32_t cUp = colors[up];
+                        std::uint32_t cDown = colors[down];
+                        std::uint32_t cLeft = colors[left];
+                        std::uint32_t cRight = colors[right];
+                        dst[idx] = mixColors(current, cUp, cDown, cLeft, cRight);
                     }
                 },
                 16);
@@ -180,6 +198,17 @@ namespace graphics {
             int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
 
             return (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        ENGINE_INLINE bool isEdge(std::uint32_t idx1, std::uint32_t idx2, float depthThreshold, float normalThreshold) {
+            float d1 = depthes[idx1];
+            float d2 = depthes[idx2];
+            if(std::abs(d1 - d2) > depthThreshold) return true;
+
+            math::Vector n1 = normals[idx1];
+            math::Vector n2 = normals[idx2];
+
+            return n1.Dot(n2) < normalThreshold;
         }
     };
 }
