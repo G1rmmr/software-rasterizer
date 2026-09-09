@@ -1,4 +1,5 @@
 *.json
+!/CMakePresets.json
 *.dll
 *.exe
 *.ilk
@@ -9,6 +10,10 @@
 .DS_Store
 .vscode
 .cache
+.vs/
+/build/
+/out/
+/cmake-build-*/
 
 main
 main.obj

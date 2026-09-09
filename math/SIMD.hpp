@@ -7,14 +7,12 @@
 //__vector-call
 
 #if defined(_MSC_VER)
-#define ENGINE_INLINE [[nodiscard]] [[msvc::forceENGINE_INLINE]] inline
+#define ENGINE_INLINE __forceinline
 #define ENGINE_VECTORCALL __vectorcall
 #else
-#define ENGINE_INLINE [[nodiscard]] __attribute__((always_ENGINE_INLINE)) inline
+#define ENGINE_INLINE inline __attribute__((always_inline))
 #define ENGINE_VECTORCALL
 #endif
-
-namespace simd {
 
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
@@ -23,6 +21,7 @@ namespace simd {
 #define SIMD_MASK(w, z, y, x) _MM_SHUFFLE(w, z, y, x)
 #define ENGINE_SIMD_SSE
 
+namespace simd {
     typedef __m256 Doubles;
     typedef __m256i Longs;
 
@@ -43,6 +42,7 @@ namespace simd {
 
 #define SIMD_MASK(w, z, y, x) (((w) << 6) | ((z) << 4) | ((y) << 2) | (x))
 #define ENGINE_SIMD_NEON
+namespace simd {
     typedef float32x4_t Floats;
 
     typedef int32x4_t Int32x4;
@@ -143,7 +143,9 @@ namespace simd {
         m = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(m), bitMask));
 
         const float sum = vaddvq_f32(m);
-        return vdupq_n_f32(sum);
+        const std::uint32_t outputMask[4] = {(MASK & 0x01) ? 0xFFFFFFFFu : 0u, (MASK & 0x02) ? 0xFFFFFFFFu : 0u,
+                                             (MASK & 0x04) ? 0xFFFFFFFFu : 0u, (MASK & 0x08) ? 0xFFFFFFFFu : 0u};
+        return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(vdupq_n_f32(sum)), vld1q_u32(outputMask)));
 #endif
     }
 
@@ -183,13 +185,16 @@ namespace simd {
 
     ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL PackRGBA(const Floats val) noexcept {
 #ifdef ENGINE_SIMD_SSE
-        Int32x4 intVal = _mm_cvtps_epi32(val);
+        // Byte lanes are saturated to [0,255], then truncated toward zero on every backend.
+        const Floats bounded = _mm_min_ps(_mm_max_ps(val, _mm_setzero_ps()), _mm_set1_ps(255.f));
+        Int32x4 intVal = _mm_cvttps_epi32(bounded);
         Int16x8 pack16 = _mm_packus_epi32(intVal, intVal);
         Int8x16 pack8 = _mm_packus_epi16(pack16, pack16);
         return static_cast<std::uint32_t>(_mm_cvtsi128_si32(pack8));
 
 #elif defined(ENGINE_SIMD_NEON)
-        Int32x4 intVal = vcvtq_s32_f32(val);
+        const Floats bounded = vminnmq_f32(vmaxnmq_f32(val, vdupq_n_f32(0.f)), vdupq_n_f32(255.f));
+        Int32x4 intVal = vcvtq_s32_f32(bounded);
         Uint16x4 pack16 = vqmovun_s32(intVal);
         Uint8x8 pack8 = vqmovn_u16(vcombine_u16(pack16, pack16));
         return vget_lane_u32(vreinterpret_u32_u8(pack8), 0);
@@ -263,8 +268,10 @@ namespace simd {
 #ifdef ENGINE_SIMD_SSE
         return _mm_castsi128_ps(_mm_shuffle_epi32(_mm_castps_si128(v), MASK));
 #else
-        return __builtin_shufflevector(v, v, (MASK & 0x03), ((MASK >> 2) & 0x03), ((MASK >> 4) & 0x03),
-                                       ((MASK >> 6) & 0x03));
+        Floats result = vdupq_n_f32(vgetq_lane_f32(v, MASK & 0x03));
+        result = vsetq_lane_f32(vgetq_lane_f32(v, (MASK >> 2) & 0x03), result, 1);
+        result = vsetq_lane_f32(vgetq_lane_f32(v, (MASK >> 4) & 0x03), result, 2);
+        return vsetq_lane_f32(vgetq_lane_f32(v, (MASK >> 6) & 0x03), result, 3);
 #endif
     }
 
@@ -273,8 +280,10 @@ namespace simd {
 #ifdef ENGINE_SIMD_SSE
         return _mm_shuffle_ps(lhs, rhs, MASK);
 #else
-        return __builtin_shufflevector(lhs, rhs, (MASK & 0x03), ((MASK >> 2) & 0x03), ((MASK >> 4) & 0x03),
-                                       ((MASK >> 6) & 0x03));
+        Floats result = vdupq_n_f32(vgetq_lane_f32(lhs, MASK & 0x03));
+        result = vsetq_lane_f32(vgetq_lane_f32(lhs, (MASK >> 2) & 0x03), result, 1);
+        result = vsetq_lane_f32(vgetq_lane_f32(rhs, (MASK >> 4) & 0x03), result, 2);
+        return vsetq_lane_f32(vgetq_lane_f32(rhs, (MASK >> 6) & 0x03), result, 3);
 #endif
     }
 

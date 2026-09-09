@@ -1,78 +1,96 @@
-﻿#include <chrono>
-#include <cstdio>
-#include <memory>
-#include <vector>
+#include "app/Application.hpp"
+#include <charconv>
+#include <cmath>
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <string_view>
 
-#include "Preferences.hpp"
-
-#include "graphics/FrameBuffer.hpp"
-#include "graphics/Rasterizer.hpp"
-
-#include "objects/African.hpp"
-#include "objects/Diablo.hpp"
-#include "objects/Plane.hpp"
-
-int main() {
-    struct mfb_window* window = preferences::Init();
-    if(!window) return -1;
-
-    struct mfb_window* debugger = preferences::debug::Init();
-    if(!debugger) return -1;
-
-    std::shared_ptr<Plane> backWall = std::make_shared<Plane>();
-    backWall->Create();
-    backWall->Model = math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({0.5f, 0.5f, 0.5f});
-    backWall->CalculateBounds();
-    preferences::Objects.push_back(backWall);
-
-    std::shared_ptr<Plane> plane = std::make_shared<Plane>();
-    plane->Create();
-    plane->Model = math::CreateTranslation({0.f, -3.f, -5.f}) *
-                   math::CreateRotation({1.f, 0.f, 0.f}, math::ToRadian(-90.f)) * math::CreateScale({0.5f, 0.5f, 0.5f});
-
-    plane->CalculateBounds();
-    preferences::Objects.push_back(plane);
-
-    std::shared_ptr<Object> model = std::make_shared<Diablo>();
-    model->Create();
-    model->IsStatic = false;
-    preferences::Objects.push_back(model);
-
-    float angle = 0.f;
-    do {
-        preferences::UpdateUniform(window);
-
-        model->Model = math::CreateTranslation({0.f, 4.75f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
-                       math::CreateScale({8.f, 8.f, 8.f});
-
-        model->CalculateBounds();
-
-        std::chrono::steady_clock::time_point frameStart = std::chrono::high_resolution_clock::now();
-
-        auto shadowFuture =
-            debug::Measure(debug::Profiler.ShadowPassTime, [&]() { return preferences::pre::Render(); });
-        auto mainFuture =
-            debug::Measure(debug::Profiler.MainPassTime, [&]() { return preferences::main::Render(shadowFuture); });
-
-        debug::Measure(debug::Profiler.PostPassTime, [&]() { preferences::post::Render(mainFuture); });
-
-        debug::Measure(debug::Profiler.AAPassTime,
-                       [&]() { preferences::CurrFrame->AntiAlias(preferences::State.IsShowingAA); });
-
-        debug::Profiler.TotalFrameTime =
-            std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - frameStart).count();
-
-        preferences::debug::Draw(debugger);
-
-        int state = mfb_update(window, preferences::CurrFrame->GetColor());
-
-        if(mfb_update(debugger, preferences::debug::Buffer.data()) < 0) debugger = nullptr;
-
-        if(state < 0) {
-            window = nullptr;
-            break;
+namespace {
+    std::uint32_t Number(std::string_view text, const char* option, bool allowZero = false) {
+        std::uint32_t value{};
+        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+        if(error != std::errc{} || end != text.data() + text.size() || (!allowZero && value == 0))
+            throw std::invalid_argument(std::string("Invalid value for ") + option);
+        return value;
+    }
+    float Distance(std::string_view text) {
+        float value{};
+        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+        if(error != std::errc{} || end != text.data() + text.size() || !std::isfinite(value) || value < 1.f ||
+           value > 200.f)
+            throw std::invalid_argument("--distance requires a number within 1..200");
+        return value;
+    }
+}
+int main(int argc, char** argv) {
+    try {
+        app::Options options;
+        const auto besideExecutable = std::filesystem::absolute(argv[0]).parent_path() / "assets";
+        if(std::filesystem::is_directory(besideExecutable)) options.Assets = besideExecutable;
+        for(int i = 1; i < argc; ++i) {
+            const std::string_view arg = argv[i];
+            const auto value = [&]() -> std::string_view {
+                if(++i >= argc) throw std::invalid_argument(std::string("Missing value for ") + std::string(arg));
+                return argv[i];
+            };
+            if(arg == "--headless")
+                options.Headless = true;
+            else if(arg == "--benchmark") {
+                options.Benchmark = true;
+                options.Headless = true;
+            }
+            else if(arg == "--warmup")
+                options.WarmupFrames = Number(value(), "--warmup", true);
+            else if(arg == "--distance")
+                options.CameraDistance = Distance(value());
+            else if(arg == "--no-profiler")
+                options.Profiler = false;
+            else if(arg == "--frames")
+                options.Frames = Number(value(), "--frames");
+            else if(arg == "--width")
+                options.Width = Number(value(), "--width");
+            else if(arg == "--height")
+                options.Height = Number(value(), "--height");
+            else if(arg == "--workers")
+                options.Workers = Number(value(), "--workers", true);
+            else if(arg == "--model")
+                options.Model = value();
+            else if(arg == "--assets")
+                options.Assets = value();
+            else if(arg == "--output")
+                options.Output = value();
+            else if(arg == "--no-shadows")
+                options.Rendering.Shadows = false;
+            else if(arg == "--no-ssao")
+                options.Rendering.AmbientOcclusion = false;
+            else if(arg == "--no-aa")
+                options.Rendering.AntiAliasing = false;
+            else if(arg == "--toon")
+                options.Rendering.Toon = true;
+            else if(arg == "--wireframe")
+                options.Rendering.Primitive = graphics::PrimitiveType::Lines;
+            else if(arg == "--points")
+                options.Rendering.Primitive = graphics::PrimitiveType::Points;
+            else if(arg == "--help") {
+                std::cout << "software-rasterizer [--headless|--benchmark] [--frames N] [--width N] [--height N]\n"
+                             "  [--distance 1..200] (default: 45; smaller values zoom in)\n"
+                             "  [--warmup N] (benchmark defaults: 30 warmup, 300 measured frames)\n"
+                             "  [--model diablo|african|cube|sphere] [--assets DIR] [--output FILE.bmp]\n"
+                             "  [--workers N] [--no-shadows] [--no-ssao] [--no-aa] [--no-profiler]\n"
+                             "  [--toon] [--wireframe|--points]\n"
+                             "Controls: SPACE primitive, Q shadow, W SSAO, E AA, R toon, ESC quit.\n"
+                             "Drag left mouse to change light; wheel to zoom.\n";
+                return 0;
+            }
+            else
+                throw std::invalid_argument("Unknown option: " + std::string(arg));
         }
-        angle += 0.01f;
-    } while(mfb_wait_sync(window));
-    return 0;
+        app::Application application(std::move(options));
+        return application.Run();
+    }
+    catch(const std::exception& error) {
+        std::cerr << "software-rasterizer: " << error.what() << '\n';
+        return 1;
+    }
 }

@@ -1,8 +1,10 @@
-﻿#pragma once
+#pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <random>
+#include <stdexcept>
 
 #include "Matrix.hpp"
 #include "Quaternion.hpp"
@@ -46,7 +48,9 @@ namespace math {
     }
 
     ENGINE_INLINE Quaternion ENGINE_VECTORCALL FromAxisAngle(const Vector& axis, const float radian) noexcept {
-        return Quaternion(axis.Norm() * std::sin(radian * 0.5f), std::cos(radian * 0.5f));
+        const Vector direction = axis.NormalizedDirection();
+        if(direction.Dot(direction) == 0.f || !std::isfinite(radian)) return Quaternion();
+        return Quaternion(direction * std::sin(radian * 0.5f), std::cos(radian * 0.5f));
     }
 
     ENGINE_INLINE Vector ENGINE_VECTORCALL GetBarycentric(const Vector& pos, const Vector& a, const Vector& b,
@@ -97,6 +101,9 @@ namespace math {
 
     ENGINE_INLINE Matrix ENGINE_VECTORCALL CreatePerspective(const float fov, const float aspect, const float near,
                                                              const float far) {
+        if(!std::isfinite(fov) || !std::isfinite(aspect) || !std::isfinite(near) || !std::isfinite(far) || fov <= 0.f ||
+           fov >= std::numbers::pi_v<float> || aspect <= 0.f || near <= 0.f || far <= near)
+            throw std::invalid_argument("Perspective requires 0 < fov < pi, aspect > 0 and 0 < near < far");
         const float tanHalfFov = std::tan(fov * 0.5f);
 
         Matrix mat(0.f);
@@ -112,13 +119,17 @@ namespace math {
 
     ENGINE_INLINE Matrix ENGINE_VECTORCALL CreateOrtho(float left, float right, float bottom, float top, float near,
                                                        float far) {
+        if(!std::isfinite(left) || !std::isfinite(right) || !std::isfinite(bottom) || !std::isfinite(top) ||
+           !std::isfinite(near) || !std::isfinite(far) || right <= left || top <= bottom || far <= near)
+            throw std::invalid_argument("Orthographic bounds must be finite and increasing");
+        // Column-major, right-handed view coordinates and NDC depth in [0,1].
         Matrix mat(0.f);
         mat[0][0] = 2.f / (right - left);
         mat[1][1] = 2.f / (top - bottom);
-        mat[2][2] = -2.f / (far - near);
-        mat[0][3] = -(right + left) / (right - left);
-        mat[1][3] = -(top + bottom) / (top - bottom);
-        mat[2][3] = -(far + near) / (far - near);
+        mat[2][2] = 1.f / (near - far);
+        mat[3][0] = -(right + left) / (right - left);
+        mat[3][1] = -(top + bottom) / (top - bottom);
+        mat[3][2] = near / (near - far);
         mat[3][3] = 1.f;
 
         return mat;
