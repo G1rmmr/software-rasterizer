@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <cassert>
 #include <cmath>
@@ -99,10 +99,20 @@ namespace math {
 
         ENGINE_INLINE float Length() const noexcept { return std::sqrt(Dot(*this)); }
 
-        ENGINE_INLINE Vector Norm() const noexcept {
+        // XYZ are a direction; W may carry a tangent handedness or another independent value.
+        ENGINE_INLINE Vector NormalizedXYZ() const noexcept {
             const float len = Length();
-            if(len > 1e-6f) return *this / len;
-            return Vector(0.f);
+            const float preservedW = std::isfinite(W) ? W : 0.f;
+            if(std::isfinite(len) && len > 1e-6f) return Vector(X / len, Y / len, Z / len, preservedW);
+            return Vector(0.f, 0.f, 0.f, preservedW);
         }
+
+        ENGINE_INLINE Vector NormalizedDirection() const noexcept {
+            Vector result = NormalizedXYZ();
+            result.W = 0.f;
+            return result;
+        }
+
+        ENGINE_INLINE Vector Norm() const noexcept { return NormalizedXYZ(); }
     };
 }

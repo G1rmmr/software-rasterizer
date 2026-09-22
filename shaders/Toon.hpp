@@ -1,141 +1,56 @@
 #pragma once
-
-#include <algorithm>
-
-#include "../graphics/Mesh.hpp"
-#include "../graphics/Texture.hpp"
-#include "../math/Math.hpp"
-
+#include "../graphics/Color.hpp"
 #include "Elements.hpp"
+#include "ShadowMap.hpp"
+#include "Surface.hpp"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <utility>
 
 namespace shader {
-    struct Toon {
-        Uniforms Uniform;
-
-        std::shared_ptr<graphics::Texture> DiffuseMap = nullptr;
-        std::vector<float>* ShadowMap = nullptr;
-
-        float ShadowMapWidth = 0.f;
-        float ShadowMapHeight = 0.f;
-
-        ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const {
-            return Uniform.Proj * Uniform.View * Uniform.Model * pos;
+    class Toon final {
+    public:
+        Toon(DrawUniforms uniforms, const graphics::Material& material, const ShadowMap* shadows = nullptr)
+            : uniforms_(std::move(uniforms)), material_(material), shadows_(shadows) {}
+        [[nodiscard]] Varyings Process(const Vertex& vertex) const noexcept {
+            return TransformVertex(vertex, uniforms_);
         }
-
-        ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
-            math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
-            return n.Norm();
-        }
-
-        ENGINE_INLINE std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
-                                          const math::Vector& worldPos, const math::Vector& uv,
-                                          const math::Vector& inTangent) const {
-            math::Vector albedo = color;
-            if(DiffuseMap) albedo = DiffuseMap->Sample(uv.X, uv.Y);
-            if(albedo.W < 0.05f) return 0x00000000;
-
-            const float colorLevels = 10.f;
-
-            albedo.X = std::floor(albedo.X * colorLevels) / colorLevels;
-            albedo.Y = std::floor(albedo.Y * colorLevels) / colorLevels;
-            albedo.Z = std::floor(albedo.Z * colorLevels) / colorLevels;
-
-            math::Vector normDir = (Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f)).Norm();
-            math::Vector lightDir = Uniform.LightDir;
-            math::Vector viewDir = (Uniform.CameraPos - worldPos).Norm();
-
-            float edge = viewDir.Dot(normDir);
-            if(edge >= 0.f && edge < 0.3f) {
-                return 0xFF000000;
-            }
-
-            float ndotl = normDir.Dot(lightDir);
-            float intensity = ndotl * 0.5f + 0.5f;
-
+        [[nodiscard]] FragmentOutput Shade(const Fragment& fragment) const {
+            auto albedo = SampleAlbedo(material_, fragment);
+            if(albedo.W <= 0.f) return {};
+            const auto normal = SampleNormal(material_, fragment);
+            const auto view = (uniforms_.CameraPos - fragment.WorldPos).Norm();
+            const float edge = view.Dot(normal);
+            if(edge >= 0.f && edge < .3f)
+                return {graphics::PackColor({0.f, 0.f, 0.f, albedo.W}), ToViewNormal(normal, uniforms_.View)};
+            albedo.X = QuantizeAlbedo(albedo.X);
+            albedo.Y = QuantizeAlbedo(albedo.Y);
+            albedo.Z = QuantizeAlbedo(albedo.Z);
+            float intensity = std::clamp(normal.Dot(uniforms_.LightDir) * .5f + .5f, 0.f, 1.f);
             intensity *= intensity;
-
-            if(ShadowMap) {
-                float shadow = calculateShadow(worldPos, normDir, lightDir);
-                if(shadow < 0.5f) intensity = std::min(intensity, 0.3f);
-            }
-
-            float tone = 0.f;
-            if(intensity > 0.9f)
-                tone = 1.f;
-            else if(intensity > 0.6f)
-                tone = 0.7f;
-            else if(intensity > 0.4f)
-                tone = 0.4f;
-            else
-                tone = 0.35f;
-
-            float spec = 0.f;
-            if(intensity > 0.f) {
-                math::Vector halfDir = (lightDir + viewDir).Norm();
-                float NdotH = std::max(normDir.Dot(halfDir), 0.f);
-                if(NdotH > 0.98f) spec = 1.f;
-            }
-
-            math::Vector finalColor;
-            finalColor.X = albedo.X * tone + spec;
-            finalColor.Y = albedo.Y * tone + spec;
-            finalColor.Z = albedo.Z * tone + spec;
-            finalColor.W = 1.f;
-
-            std::swap(finalColor.X, finalColor.Z);
-
-            return simd::PackRGBA(
-                simd::Clamp(simd::Mul(finalColor.V, simd::Set(255.f)), simd::Set(0.f), simd::Set(255.f)));
-        }
-
-        ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
-            Varyings out;
-
-            math::Vector clipPos = Vertex(in.Pos);
-            clipPos.Z += Uniform.DepthBias * clipPos.W;
-
-            out.Pos = clipPos;
-
-            out.WorldPos = Uniform.Model * in.Pos;
-            out.WorldPos.W = 1.f;
-
-            math::Vector tDir = math::Vector(in.Tangent.X, in.Tangent.Y, in.Tangent.Z, 0.f);
-            tDir = (Uniform.Model * tDir).Norm();
-
-            math::Vector norm = Normal(in.Normal);
-
-            out.Normal = norm;
-            out.Color = in.Color;
-            out.Tangent = math::Vector(tDir.X, tDir.Y, tDir.Z, in.Tangent.W);
-            out.UV = in.UV;
-            return out;
+            if(shadows_ && shadows_->Visibility(fragment.WorldPos, normal, uniforms_.LightDir) < .5f)
+                intensity = std::min(intensity, .3f);
+            const float tone = intensity > .9f ? 1.f : intensity > .6f ? .7f : intensity > .4f ? .4f : .15f;
+            const auto halfDirection = (uniforms_.LightDir + view).Norm();
+            const float specular = intensity > 0.f && normal.Dot(halfDirection) > .98f ? 1.f : 0.f;
+            math::Vector result(albedo.X * tone + specular, albedo.Y * tone + specular, albedo.Z * tone + specular,
+                                albedo.W);
+            return {graphics::PackColor(result), ToViewNormal(normal, uniforms_.View)};
         }
 
     private:
-        ENGINE_INLINE float calculateShadow(const math::Vector& worldPos, const math::Vector& normal,
-                                            const math::Vector& lightDir) const {
-            if(!ShadowMap) return 1.f;
-
-            math::Vector lightSpacePos = Uniform.LightSpace * worldPos;
-            math::Vector projCoords = lightSpacePos * (1.f / lightSpacePos.W);
-            projCoords.X = projCoords.X * 0.5f + 0.5f;
-            projCoords.Y = 1.f - (projCoords.Y * 0.5f + 0.5f);
-            if(projCoords.Z > 1.f || projCoords.X < 0.f || projCoords.X > 1.f || projCoords.Y < 0.f ||
-               projCoords.Y > 1.f)
-                return 1.f;
-
-            float currentDepth = projCoords.Z;
-            float bias = 0.005f;
-            float closestDepth = ShadowMap->at(getShadowIndex(projCoords.X, projCoords.Y));
-            return (currentDepth - bias > closestDepth) ? 0.f : 1.f;
+        static float QuantizeAlbedo(float channel) noexcept {
+            const float scaled = std::clamp(channel, 0.f, 1.f) * 10.f;
+            // Perspective interpolation can place a constant color a few ULPs below
+            // an exact bin boundary. Absorb roundoff without rounding to another bin.
+            constexpr float roundoff = 8.f * std::numeric_limits<float>::epsilon();
+            const float tolerance = roundoff * std::max(1.f, scaled);
+            return std::floor(scaled + tolerance) / 10.f;
         }
 
-        ENGINE_INLINE std::int32_t getShadowIndex(const float u, const float v) const {
-            std::int32_t x = std::clamp(static_cast<std::int32_t>(u * ShadowMapWidth), 0,
-                                        static_cast<std::int32_t>(ShadowMapWidth - 1));
-            std::int32_t y = std::clamp(static_cast<std::int32_t>(v * ShadowMapHeight), 0,
-                                        static_cast<std::int32_t>(ShadowMapHeight - 1));
-            return y * ShadowMapWidth + x;
-        }
+        DrawUniforms uniforms_;
+        const graphics::Material& material_;
+        const ShadowMap* shadows_;
     };
 }

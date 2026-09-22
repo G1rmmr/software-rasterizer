@@ -1,30 +1,43 @@
 #pragma once
-
 #include "Elements.hpp"
+#include "Surface.hpp"
+#include <utility>
 
 namespace shader {
-    struct Shadow {
-        Uniforms Uniform;
+    // Opaque coverage needs only clip position and depth. The rasterizer can
+    // omit attribute interpolation and surface evaluation for this contract.
+    class OpaqueShadow final {
+    public:
+        static constexpr bool DepthOnly = true;
+        explicit OpaqueShadow(math::Matrix modelViewProjection) : transform_(std::move(modelViewProjection)) {}
+        [[nodiscard]] Varyings Process(const Vertex& vertex) const noexcept {
+            Varyings result;
+            result.Pos = transform_ * vertex.Pos;
+            return result;
+        }
+        [[nodiscard]] FragmentOutput Shade(const Fragment&) const noexcept { return {0xffffffffu, {}}; }
 
-        ENGINE_INLINE math::Vector Vertex(const math::Vector& pos) const {
-            return Uniform.LightSpace * Uniform.Model * pos;
+    private:
+        math::Matrix transform_;
+    };
+
+    class Shadow final {
+    public:
+        Shadow(DrawUniforms uniforms, const graphics::Material& material)
+            : uniforms_(std::move(uniforms)), material_(material) {}
+        [[nodiscard]] Varyings Process(const Vertex& vertex) const noexcept {
+            return TransformVertex(vertex, uniforms_);
+        }
+        [[nodiscard]] FragmentOutput Shade(const Fragment& fragment) const {
+            // A depth shadow map supports alpha coverage, not colored transmission.
+            const auto albedo = SampleAlbedo(material_, fragment);
+            if(albedo.W <= 0.f || (material_.Alpha == graphics::AlphaMode::Blend && albedo.W < material_.AlphaCutoff))
+                return {};
+            return {0xffffffffu, {}};
         }
 
-        ENGINE_INLINE math::Vector Normal(const math::Vector& normal) const {
-            math::Vector n = Uniform.Model * math::Vector(normal.X, normal.Y, normal.Z, 0.f);
-            return n.Norm();
-        }
-
-        ENGINE_INLINE std::uint32_t Color(const math::Vector& color, const math::Vector& normal,
-                                          const math::Vector& worldPos, const math::Vector& uv,
-                                          const math::Vector& inTangent) const {
-            return 0xFFFFFFFF;
-        }
-
-        ENGINE_INLINE Varyings Process(const shader::Vertex& in) const {
-            Varyings out;
-            out.Pos = Vertex(in.Pos);
-            return out;
-        }
+    private:
+        DrawUniforms uniforms_;
+        const graphics::Material& material_;
     };
 }

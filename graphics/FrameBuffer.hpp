@@ -1,219 +1,100 @@
-﻿#pragma once
+#pragma once
 
+#include "../math/Vector.hpp"
+#include "ParallelExecutor.hpp"
 #include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <span>
+#include <stdexcept>
 #include <vector>
 
-#include "../math/Math.hpp"
-#include "ParallelExecutor.hpp"
-
 namespace graphics {
-    struct BoundingBox {
-        std::int32_t MinX;
-        std::int32_t MaxX;
-        std::int32_t MinY;
-        std::int32_t MaxY;
-        bool ShouldRender;
-    };
-
-    class FrameBuffer {
+    // Owns equally sized color, depth and view-space normal attachments.
+    // Views permit editing pixels, never changing an attachment's extent.
+    class FrameBuffer final {
     public:
-        FrameBuffer(const std::uint32_t width, const std::uint32_t height) noexcept
-            : colors(width * height, 0),
-              depthes(width * height, 1.f),
-              normals(width * height, math::Vector(0.f, 0.f, 0.f)),
-              width(width),
-              height(height) {}
+        FrameBuffer(std::uint32_t width, std::uint32_t height) { Resize(width, height); }
+        FrameBuffer(const FrameBuffer&) = delete;
+        FrameBuffer& operator=(const FrameBuffer&) = delete;
+        FrameBuffer(FrameBuffer&&) = delete;
+        FrameBuffer& operator=(FrameBuffer&&) = delete;
 
-        ~FrameBuffer() noexcept = default;
-
-        FrameBuffer(const FrameBuffer&) = default;
-        FrameBuffer& operator=(const FrameBuffer&) = default;
-
-        FrameBuffer(FrameBuffer&& other) noexcept
-            : colors(std::move(other.colors)),
-              depthes(std::move(other.depthes)),
-              normals(std::move(other.normals)),
-              width(other.width),
-              height(other.height) {}
-
-        FrameBuffer& operator=(FrameBuffer&& other) noexcept {
-            if(this != &other) {
-                colors = std::move(other.colors);
-                depthes = std::move(other.depthes);
-                normals = std::move(other.normals);
-                width = other.width;
-                height = other.height;
-            }
-            return *this;
+        void Resize(std::uint32_t width, std::uint32_t height) {
+            if(width == 0 || height == 0 || width > INT32_MAX || height > INT32_MAX)
+                throw std::invalid_argument("FrameBuffer dimensions must be positive signed 32-bit values");
+            const auto count = static_cast<std::size_t>(width) * height;
+            if(count > std::numeric_limits<std::size_t>::max() / sizeof(math::Vector))
+                throw std::length_error("FrameBuffer dimensions overflow storage size");
+            if(width == width_ && height == height_) return;
+            std::vector<std::uint32_t> colors(count, 0xff000000u);
+            std::vector<float> depths(count, 1.f);
+            std::vector<math::Vector> normals(count);
+            colors_.swap(colors);
+            depths_.swap(depths);
+            normals_.swap(normals);
+            width_ = width;
+            height_ = height;
         }
 
-        ENGINE_INLINE void SetWidth(const std::uint32_t width) noexcept { this->width = width; }
-        [[nodiscard]] ENGINE_INLINE std::uint32_t GetWidth() const noexcept { return width; }
-
-        ENGINE_INLINE void SetHeight(const std::uint32_t height) noexcept { this->height = height; }
-        [[nodiscard]] ENGINE_INLINE std::uint32_t GetHeight() const noexcept { return height; }
-
-        ENGINE_INLINE void Clear(const std::uint32_t clearColor = 0) noexcept {
-            std::fill(colors.begin(), colors.end(), clearColor);
-            std::fill(depthes.begin(), depthes.end(), 1.f);
-            std::fill(normals.begin(), normals.end(), math::Vector(0.f, 0.f, 0.f));
+        void Clear(std::uint32_t color = 0xff000000u) noexcept {
+            std::fill(colors_.begin(), colors_.end(), color);
+            std::fill(depths_.begin(), depths_.end(), 1.f);
+            std::fill(normals_.begin(), normals_.end(), math::Vector{});
         }
 
-        ENGINE_INLINE void SetPixel(const std::uint32_t x, const std::uint32_t y, const std::uint32_t color) noexcept {
-            colors[y * width + x] = color;
-        }
+        // A depth-only pass does not need to touch the other attachments.
+        void ClearDepth() noexcept { std::fill(depths_.begin(), depths_.end(), 1.f); }
 
-        ENGINE_INLINE std::uint32_t GetPixel(const std::uint32_t x, const std::uint32_t y) const noexcept {
-            if(x < 0 || x >= width || y < 0 || y >= height) return 0x00000000;
-            return colors[y * width + x];
-        }
-
-        ENGINE_INLINE bool TestDepth(const std::uint32_t x, const std::uint32_t y, const float z) const noexcept {
-            return z < depthes[y * width + x];
-        }
-
-        ENGINE_INLINE void SetDepth(const std::uint32_t x, const std::uint32_t y, const float z) noexcept {
-            depthes[y * width + x] = z;
-        }
-
-        ENGINE_INLINE void SetNormal(const std::uint32_t x, const std::uint32_t y,
-                                     const math::Vector& normal) noexcept {
-            if(x >= width || y >= height) return;
-            normals[y * width + x] = normal;
-        }
-
-        [[nodiscard]] ENGINE_INLINE math::Vector GetNormal(const std::uint32_t x,
-                                                           const std::uint32_t y) const noexcept {
-            if(x >= width || y >= height) return math::Vector(0.f, 0.f, 0.f);
-            return normals[y * width + x];
-        }
-
-        ENGINE_INLINE BoundingBox ENGINE_VECTORCALL GetBound(const math::Vector& v0, const math::Vector& v1,
-                                                             const math::Vector& v2) const noexcept {
-            float minX = std::min({v0.X, v1.X, v2.X});
-            float maxX = std::max({v0.X, v1.X, v2.X});
-            float minY = std::min({v0.Y, v1.Y, v2.Y});
-            float maxY = std::max({v0.Y, v1.Y, v2.Y});
-
-            std::int32_t left = std::max(0, static_cast<std::int32_t>(std::floor(minX)));
-            std::int32_t right =
-                std::min(static_cast<std::int32_t>(width) - 1, static_cast<std::int32_t>(std::ceil(maxX)));
-
-            std::int32_t bottom = std::max(0, static_cast<std::int32_t>(std::floor(minY)));
-            std::int32_t top =
-                std::min(static_cast<std::int32_t>(height) - 1, static_cast<std::int32_t>(std::ceil(maxY)));
-
-            return {static_cast<std::int32_t>(left), static_cast<std::int32_t>(right),
-                    static_cast<std::int32_t>(bottom), static_cast<std::int32_t>(top), left <= right && bottom <= top};
-        }
-
-        [[nodiscard]] ENGINE_INLINE std::uint32_t* __restrict GetColor() noexcept { return colors.data(); }
-        [[nodiscard]] ENGINE_INLINE float* __restrict GetDepth() noexcept { return depthes.data(); }
-
-        ENGINE_INLINE std::vector<std::uint32_t>& GetColors() noexcept { return colors; }
-        ENGINE_INLINE const std::vector<std::uint32_t>& GetColors() const noexcept { return colors; }
-
-        ENGINE_INLINE std::vector<float>& GetDepthes() noexcept { return depthes; }
-        ENGINE_INLINE const std::vector<float>& GetDepthes() const noexcept { return depthes; }
-
-        ENGINE_INLINE std::vector<math::Vector>& GetNormals() noexcept { return normals; }
-        ENGINE_INLINE const std::vector<math::Vector>& GetNormals() const noexcept { return normals; }
-
-        ENGINE_INLINE void UpdateBuffer(const std::vector<std::uint32_t>& newColors) noexcept { colors = newColors; }
-
-        ENGINE_INLINE void AntiAlias(const bool shouldAlias = true, const std::uint32_t threshold = 30) {
-            if(!shouldAlias) return;
-
-            std::vector<std::uint32_t> dst(width * height);
-
-            const float depthThreshold = 0.05f;
-            const float normalThreshold = 0.95f;
-
-            ParallelExecutor::GetInstance().ParallelFor(
-                0, height,
+        void Clear(ParallelExecutor& executor, std::uint32_t color = 0xff000000u) {
+            executor.ParallelFor(
+                0, height_,
                 [&](std::size_t y) {
-                    for(std::uint32_t x = 0; x < width; ++x) {
-                        std::uint32_t idx = y * width + x;
-                        std::uint32_t current = colors[idx];
-
-                        if(x == 0 || x == width - 1 || y == 0 || y == height - 1) {
-                            dst[idx] = current;
-                            continue;
-                        }
-                        std::uint32_t up = idx - width;
-                        std::uint32_t down = idx + width;
-                        std::uint32_t left = idx - 1;
-                        std::uint32_t right = idx + 1;
-
-                        bool edgeDetected = false;
-                        if(isEdge(idx, up, depthThreshold, normalThreshold))
-                            edgeDetected = true;
-                        else if(isEdge(idx, down, depthThreshold, normalThreshold))
-                            edgeDetected = true;
-                        else if(isEdge(idx, left, depthThreshold, normalThreshold))
-                            edgeDetected = true;
-                        else if(isEdge(idx, right, depthThreshold, normalThreshold))
-                            edgeDetected = true;
-
-                        if(!edgeDetected) {
-                            dst[idx] = current;
-                            continue;
-                        }
-
-                        std::uint32_t cUp = colors[up];
-                        std::uint32_t cDown = colors[down];
-                        std::uint32_t cLeft = colors[left];
-                        std::uint32_t cRight = colors[right];
-                        dst[idx] = mixColors(current, cUp, cDown, cLeft, cRight);
-                    }
+                    const auto offset = y * width_;
+                    std::fill_n(colors_.data() + offset, width_, color);
+                    std::fill_n(depths_.data() + offset, width_, 1.f);
+                    std::fill_n(normals_.data() + offset, width_, math::Vector{});
                 },
-                64); // Chunk Size는 64 추천
+                16);
+        }
 
-            UpdateBuffer(dst);
+        [[nodiscard]] std::uint32_t GetWidth() const noexcept { return width_; }
+        [[nodiscard]] std::uint32_t GetHeight() const noexcept { return height_; }
+        [[nodiscard]] std::span<const std::uint32_t> GetColors() const noexcept { return colors_; }
+        [[nodiscard]] std::span<const float> GetDepths() const noexcept { return depths_; }
+        [[nodiscard]] std::span<const math::Vector> GetNormals() const noexcept { return normals_; }
+        [[nodiscard]] std::span<std::uint32_t> Colors() noexcept { return colors_; }
+
+        [[nodiscard]] std::uint32_t GetPixel(std::uint32_t x, std::uint32_t y) const noexcept {
+            return colors_[Index(x, y)];
+        }
+        [[nodiscard]] float GetDepth(std::uint32_t x, std::uint32_t y) const noexcept { return depths_[Index(x, y)]; }
+        [[nodiscard]] math::Vector GetNormal(std::uint32_t x, std::uint32_t y) const noexcept {
+            return normals_[Index(x, y)];
+        }
+        [[nodiscard]] bool TestDepth(std::uint32_t x, std::uint32_t y, float z) const noexcept {
+            return z >= 0.f && z <= 1.f && z < depths_[Index(x, y)];
+        }
+        void SetPixel(std::uint32_t x, std::uint32_t y, std::uint32_t color) noexcept { colors_[Index(x, y)] = color; }
+        void SetDepth(std::uint32_t x, std::uint32_t y, float depth) noexcept {
+            assert(std::isfinite(depth) && depth >= 0.f && depth <= 1.f);
+            depths_[Index(x, y)] = depth;
+        }
+        void SetNormal(std::uint32_t x, std::uint32_t y, const math::Vector& normal) noexcept {
+            normals_[Index(x, y)] = normal;
         }
 
     private:
-        std::vector<math::Vector> normals;
-        std::vector<std::uint32_t> colors;
-        std::vector<float> depthes;
-        std::uint32_t width;
-        std::uint32_t height;
-
-        ENGINE_INLINE std::int32_t ENGINE_VECTORCALL colorDiff(const std::uint32_t c1, const std::uint32_t c2) {
-            int r1 = (c1 >> 16) & 0xFF;
-            int g1 = (c1 >> 8) & 0xFF;
-            int b1 = c1 & 0xFF;
-            int r2 = (c2 >> 16) & 0xFF;
-            int g2 = (c2 >> 8) & 0xFF;
-            int b2 = c2 & 0xFF;
-            return std::abs(r1 - r2) + std::abs(g1 - g2) + std::abs(b1 - b2);
+        [[nodiscard]] std::size_t Index(std::uint32_t x, std::uint32_t y) const noexcept {
+            assert(x < width_ && y < height_);
+            return static_cast<std::size_t>(y) * width_ + x;
         }
-
-        ENGINE_INLINE std::uint32_t ENGINE_VECTORCALL mixColors(const std::uint32_t c1, const std::uint32_t c2,
-                                                                const std::uint32_t c3, const std::uint32_t c4,
-                                                                const std::uint32_t c5) {
-            int r = (((c1 >> 16) & 0xFF) + ((c2 >> 16) & 0xFF) + ((c3 >> 16) & 0xFF) + ((c4 >> 16) & 0xFF) +
-                     ((c5 >> 16) & 0xFF)) /
-                    5;
-
-            int g = (((c1 >> 8) & 0xFF) + ((c2 >> 8) & 0xFF) + ((c3 >> 8) & 0xFF) + ((c4 >> 8) & 0xFF) +
-                     ((c5 >> 8) & 0xFF)) /
-                    5;
-
-            int b = ((c1 & 0xFF) + (c2 & 0xFF) + (c3 & 0xFF) + (c4 & 0xFF) + (c5 & 0xFF)) / 5;
-
-            return (0xFF << 24) | (r << 16) | (g << 8) | b;
-        }
-
-        ENGINE_INLINE bool isEdge(std::uint32_t idx1, std::uint32_t idx2, float depthThreshold, float normalThreshold) {
-            float d1 = depthes[idx1];
-            float d2 = depthes[idx2];
-            if(std::abs(d1 - d2) > depthThreshold) return true;
-
-            math::Vector n1 = normals[idx1];
-            math::Vector n2 = normals[idx2];
-
-            return n1.Dot(n2) < normalThreshold;
-        }
+        std::uint32_t width_ = 0;
+        std::uint32_t height_ = 0;
+        std::vector<std::uint32_t> colors_;
+        std::vector<float> depths_;
+        std::vector<math::Vector> normals_;
     };
 }

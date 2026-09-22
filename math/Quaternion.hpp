@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -84,7 +85,7 @@ namespace math {
         ENGINE_INLINE Quaternion ENGINE_VECTORCALL Sqrt() const noexcept { return Quaternion(simd::Sqrt(Q)); }
 
         ENGINE_INLINE float ENGINE_VECTORCALL Dot(const Quaternion& other) const noexcept {
-            return simd::GetFirst(simd::HorizonSum<0x71>(Q, other.Q));
+            return simd::GetFirst(simd::HorizonSum<0xF1>(Q, other.Q));
         }
 
         ENGINE_INLINE Quaternion& ENGINE_VECTORCALL operator*=(const Quaternion& other) noexcept {
@@ -106,7 +107,11 @@ namespace math {
             return std::sqrt(dot);
         }
 
-        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Norm() const noexcept { return *this / Length(); }
+        ENGINE_INLINE Quaternion ENGINE_VECTORCALL Norm() const noexcept {
+            const float length = Length();
+            if(!std::isfinite(length) || length <= 1e-6f) return Quaternion();
+            return *this / length;
+        }
 
         ENGINE_INLINE Quaternion ENGINE_VECTORCALL Conjugate() const noexcept {
             return Quaternion(simd::Mul(Q, simd::Set(-1.f, -1.f, -1.f, 1.f)));
@@ -134,25 +139,20 @@ namespace math {
         }
 
         ENGINE_INLINE Quaternion ENGINE_VECTORCALL Slerp(const Quaternion& other, const float t) const noexcept {
-            float cosHalfTheta = simd::GetFirst(simd::HorizonSum<0x71>(Q, other.Q));
-
-            Quaternion target = other;
-            if(cosHalfTheta < 0.f) {
-                target.Q = simd::Mul(other.Q, simd::Set(-1.f));
-                cosHalfTheta = -cosHalfTheta;
+            const Quaternion source = Norm();
+            Quaternion target = other.Norm();
+            if(!std::isfinite(t)) return source;
+            float cosine = source.Dot(target);
+            if(cosine < 0.f) {
+                target *= -1.f;
+                cosine = -cosine;
             }
+            cosine = std::clamp(cosine, 0.f, 1.f);
+            if(cosine > 0.9995f) return (source + (target - source) * t).Norm();
 
-            if(cosHalfTheta > 0.9995f) {
-                return Quaternion(simd::Add(Q, simd::Mul(simd::Sub(target.Q, Q), simd::Set(t))));
-            }
-
-            float halfTheta = std::acos(cosHalfTheta);
-            float sinHalfTheta = std::sqrt(1.f - cosHalfTheta * cosHalfTheta);
-
-            float ratioA = std::sin((1 - t) * halfTheta) / sinHalfTheta;
-            float ratioB = std::sin(t * halfTheta) / sinHalfTheta;
-
-            return Quaternion(simd::Add(simd::Mul(Q, simd::Set(ratioA)), simd::Mul(target.Q, simd::Set(ratioB))));
+            const float angle = std::acos(cosine);
+            const float sine = std::sin(angle);
+            return (source * (std::sin((1.f - t) * angle) / sine) + target * (std::sin(t * angle) / sine)).Norm();
         }
     };
 }

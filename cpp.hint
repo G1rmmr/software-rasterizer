@@ -1,0 +1,4 @@
+// Visual Studio browsing hints; the actual definitions live in math/SIMD.hpp.
+#define ENGINE_INLINE inline
+#define ENGINE_VECTORCALL __vectorcall
+

@@ -1,0 +1,123 @@
+# 성능 측정과 최적화
+
+이 문서의 목표는 기본 1280×720 장면에서 60fps에 해당하는 **16.667ms 프레임 예산**을 확인하는 것이다.
+프레임 시간은 CPU, 전원 상태, 백그라운드 작업, 표시 장치의 동기화에 영향을 받으므로 평균과 느린 프레임을 함께 본다.
+
+## 측정 결과
+
+2026-09-08, Intel Core i7-13700HX(논리 프로세서 24개), Windows x64, MSVC Release에서 측정했다.
+작업 스레드 23개, 기본 1280×720, 그림자·SSAO·AA를 모두 활성화했다.
+비교 기준은 이번 성능 변경 직전의 OOP 리팩터링 버전이며, 두 실행 파일에 같은 측정 코드를 사용했다.
+빌드와 다른 벤치마크를 동시에 실행하지 않았다.
+
+Diablo 장면을 준비 60프레임 후 같은 회전 순서로 600프레임 측정한 결과다.
+
+| CPU 지표 | 개선 전 | 개선 후 |
+| --- | ---: | ---: |
+| 평균 프레임 시간 | 46.883ms | **10.584ms** |
+| p95 프레임 시간 | 51.904ms | **11.328ms** |
+| p99 프레임 시간 | 54.163ms | 11.739ms |
+| 최대 프레임 시간 | 55.972ms | 12.747ms |
+| 평균 시간으로 계산한 FPS | 21.330 | **94.482** |
+| 16.667ms 초과 | 600 / 600 | **0 / 600** |
+
+평균 CPU 처리량은 약 **4.43배** 증가했다. 패스별 평균 시간은 다음과 같다.
+
+| 패스 | 개선 전 | 개선 후 |
+| --- | ---: | ---: |
+| 그림자 | 6.852ms | 1.784ms |
+| Geometry | 8.496ms | 4.397ms |
+| SSAO | 15.135ms | 2.811ms |
+| AA | 14.827ms | 1.251ms |
+
+CPU 전체 시간에는 위 패스 외에 프레임 초기화와 scene 갱신 등이 포함된다.
+다른 장면도 준비 60프레임 후 300프레임씩 확인했다.
+
+| 장면 | CPU 평균 | p95 | 최대 | 16.667ms 초과 |
+| --- | ---: | ---: | ---: | ---: |
+| African | 11.046ms | 11.961ms | 12.791ms | 0 / 300 |
+| African + Toon | 11.360ms | 12.350ms | 13.929ms | 0 / 300 |
+
+기본 Diablo 장면을 실제 창과 보조 프로파일러 창으로 실행했을 때는 준비 60프레임 이후 300프레임에서
+평균 **66.494fps**였다. 렌더링·프로파일러·창 갱신을 합한 작업 시간은 평균 15.033ms, p95 17.472ms였다.
+이 측정은 창 갱신 루프의 처리율이며, 모니터에 표시되는 고유 프레임 수를 직접 측정한 값은 아니다.
+CPU 벤치마크에서는 측정한 모든 프레임이 예산을 만족했지만, 실제 창 경로에는 16.667ms를 넘는 작업 구간도 있었다.
+초기 캐시 준비를 포함한 첫 프레임이나 다른 하드웨어·장면까지 항상 60fps를 보장한다는 의미는 아니다.
+
+로컬 원본 로그는 `build/perf-baseline/final-600.txt`, `build/perf-final-diablo.txt`,
+`build/perf-final-african.txt`, `build/perf-final-toon.txt`, `build/perf-window.txt`에 있다.
+`build`의 측정 산출물은 Git에 포함하지 않는다.
+
+## 재현하기
+
+Windows x64, MSVC Release 빌드를 사용한다.
+
+```powershell
+cmake --preset windows-msvc
+cmake --build --preset release
+ctest --preset release
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --frames 600 --warmup 60 --width 1280 --height 720 --workers 23 --model diablo
+```
+
+이 명령은 자산 로딩 후 60프레임을 준비 구간으로 실행하고, 같은 회전 순서로 600프레임을 측정한다.
+준비 구간은 통계에서 제외하며, 측정 시작 시 회전 각도를 0으로 되돌린다.
+기본값은 준비 30프레임·측정 300프레임이다. 한 프레임마다 회전 각도가 0.01 rad 증가한다.
+
+`--instances N`은 하나의 모델 자산을 공유하는 N개의 회전 인스턴스를 결정적인 격자로 배치한다.
+`--scene-backend oop|mir`로 OOP baseline과 MIR ECS command-buffer 갱신을 선택한다. `mir` 백엔드는 정적 벽·바닥을
+포함한 4098개 엔티티를 고정 예약하므로 최대 4096개 인스턴스에서도 같은 모델·배치·갱신 수를 유지한다.
+예를 들어 씬 순회와 transform 갱신이 픽셀 처리에 가려지는 정도는 다음처럼 확인한다.
+
+```powershell
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --frames 600 --warmup 60 --width 1280 --height 720 --workers 23
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --scene-backend mir --frames 600 --warmup 60 --width 1280 --height 720 --workers 23
+```
+
+출력은 scene 갱신과 CPU 렌더링을 합한 mean/p50/p95/p99/max, 평균 FPS, 16.667ms 초과 프레임 수를 포함한다.
+그림자·geometry·SSAO·AA의 평균 시간도 별도로 출력한다.
+파일 로딩, 이미지 저장, 창 표시, vsync는 이 CPU 측정에서 제외된다.
+
+실제 표시 경로는 다음과 같이 확인한다. 기본 보조 프로파일러 창도 포함된다.
+
+```powershell
+./build/windows-msvc/bin/Release/software-rasterizer.exe --frames 360 --warmup 60 --width 1280 --height 720 --workers 23
+```
+
+종료 시 표시 간격으로 계산한 FPS와, 렌더링·프로파일러·창 갱신을 합한 작업 시간의 평균/p95를 출력한다.
+FPS에는 frame pacing이 포함되고, 작업 시간에는 명시적인 `Wait()`가 제외된다.
+그래픽 드라이버의 buffer swap이 기다리는 시간은 창 갱신 비용에 포함된다.
+
+## 유지한 조건
+
+- 해상도 1280×720, 같은 모델·카메라·광원·회전 순서.
+- 그림자·SSAO·AA 활성화. 그림자 맵 512×512, 기존 PCSS 8+8 samples.
+- SSAO kernel 8개, 같은 반경·bias·strength·blur 범위.
+- 기존 AA 임계값과 5개 픽셀의 평균.
+- `/fp:precise`와 기존 클리핑·원근 보간·top-left 규약.
+- 불투명 → SSAO → 반투명 → AA 순서.
+
+## 어떤 공부가 최적화 이유를 보여 주는가
+
+| 공부할 개념 | 코드에서 확인할 내용 |
+| --- | --- |
+| 작업 분할과 동기화 비용 | [ParallelExecutor](../graphics/ParallelExecutor.hpp)는 한 chunk 이하를 호출 스레드에서 실행한다. 실제로 나눠 할 일이 있는지를 먼저 판단한다. |
+| 메모리 지역성과 인덱스 참조 | [Rasterizer](../graphics/Rasterizer.hpp)는 정점의 화면 좌표를 재사용하고 삼각형에는 정점 인덱스를 보관한다. 타일의 삼각형 목록도 연속 메모리를 사용한다. 큰 정점 데이터를 몇 번 복사하고 있는지 확인할 수 있다. |
+| 루프 불변식과 증분 계산 | 삼각형의 edge 변화량을 한 번 구해 정수 덧셈으로 이동한다. 매 픽셀마다 같은 곱셈을 반복할 필요가 있는지 볼 수 있다. |
+| 정적 다형성과 필요한 최소 데이터 | [OpaqueShadow](../shaders/Shadow.hpp)는 깊이만 계산하는 계약을 선언한다. UV 보간이나 표면 계산이 필요 없는 패스를 식별하는 방법이다. |
+| 파생 데이터의 수명과 캐시 무효화 | [SsaoPass](../graphics/post/SsaoPass.cpp)는 해상도·투영 변화에 맞춰 좌표 항과 회전 표본을 준비한다. 화면이 바뀌었을 때 무엇을 다시 계산해야 하는지 볼 수 있다. |
+| 결과가 달라지지 않는 조기 종료 | SSAO에서 기여가 정확히 0인 표본과 가림이 없는 블러 영역, AA에서 주변 RGB가 모두 같은 경우를 건너뛴다. 결과가 같다는 조건을 먼저 증명하는 방법이다. |
+| 계산 재사용과 공간 비용 | AA는 같은 법선을 반복 정규화하는 대신 프레임당 한 번 준비한다. 계산 감소와 작업 메모리 증가의 교환이다. |
+
+캐시는 패스 객체가 소유하며, 프레임 버퍼와 함께 전역으로 공유하지 않는다.
+삼각형 작업 데이터는 draw에 속하고, 병렬 실행은 모든 참조가 유효한 동안 완료된다.
+
+## 검증 해석
+
+회귀 테스트는 시간 임계값 대신 정확성 계약을 검사한다. 성능 임계값은 하드웨어별로 위 명령으로 측정한다.
+Debug와 Release 각각 CTest 8개 그룹이 모두 통과했다.
+Diablo 첫 프레임, Diablo 45번째 회전 프레임, African 첫 프레임을 1280×720에서 최적화 전 BMP와 비교했고,
+세 파일 모두 SHA-256이 일치했다. 이 비교 장면에서는 픽셀 출력이 바이트 단위로 보존되었다.
+회귀 테스트에는 클리핑 정점 풀의 확장, 깊이 전용 셰이더, SSAO 비트마스크의 64비트 경계·작은 해상도·캐시 재사용도 포함된다.
+
+테스트용 `build/perf-probes`에는 조사 과정에서 만든 상세 계측 실행 파일이 있을 수 있다.
+이는 로컬 조사 산출물이며 프로그램 빌드에 포함되지 않는다.

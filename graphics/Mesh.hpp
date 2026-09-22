@@ -1,21 +1,26 @@
 #pragma once
 
-#include <memory>
-#include <string>
+#include <cstdint>
+#include <span>
+#include <vector>
 
-#include "../shaders/Elements.hpp"
-#include "Texture.hpp"
+#include "BoundingSphere.hpp"
+#include "Material.hpp"
+#include "Vertex.hpp"
 
 namespace graphics {
-    struct Mesh {
-        std::vector<shader::Vertex> Vertices;
-        std::vector<std::uint32_t> Indices;
+    class Mesh {
+    public:
+        Mesh(std::vector<Vertex> vertices, std::vector<std::uint32_t> indices, Material material = {});
+        [[nodiscard]] std::span<const Vertex> GetVertices() const noexcept { return vertices; }
+        [[nodiscard]] std::span<const std::uint32_t> GetIndices() const noexcept { return indices; }
+        [[nodiscard]] const Material& GetMaterial() const noexcept { return material; }
+        [[nodiscard]] const BoundingSphere& GetBounds() const noexcept { return bounds; }
 
-        std::shared_ptr<graphics::Texture> DiffuseMap = nullptr;
-        std::shared_ptr<graphics::Texture> NormalMap = nullptr;
-        std::shared_ptr<graphics::Texture> SpecularMap = nullptr;
-        std::shared_ptr<graphics::Texture> GlossMap = nullptr;
-        std::shared_ptr<graphics::Texture> GlowMap = nullptr;
-        std::shared_ptr<graphics::Texture> SSSMap = nullptr;
+    private:
+        std::vector<Vertex> vertices;
+        std::vector<std::uint32_t> indices;
+        Material material;
+        BoundingSphere bounds;
     };
 }

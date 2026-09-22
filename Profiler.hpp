@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 
 namespace debug {
     struct TimeData {
@@ -9,21 +10,16 @@ namespace debug {
         float TotalFrameTime = 0.f;
     };
 
-    inline TimeData Profiler;
+    class ScopedTimer final {
+    public:
+        explicit ScopedTimer(float& output) noexcept : output_(output), start_(Clock::now()) {}
+        ~ScopedTimer() { output_ = std::chrono::duration<float, std::milli>(Clock::now() - start_).count(); }
+        ScopedTimer(const ScopedTimer&) = delete;
+        ScopedTimer& operator=(const ScopedTimer&) = delete;
 
-    template <typename Func> decltype(auto) Measure(float& outTime, Func&& func) {
-        auto start = std::chrono::high_resolution_clock::now();
-
-        if constexpr(std::is_void_v<std::invoke_result_t<Func>>) {
-            std::forward<Func>(func)(); // 실행
-            auto end = std::chrono::high_resolution_clock::now();
-            outTime = std::chrono::duration<float, std::milli>(end - start).count();
-        }
-        else {
-            decltype(auto) result = std::forward<Func>(func)();
-            auto end = std::chrono::high_resolution_clock::now();
-            outTime = std::chrono::duration<float, std::milli>(end - start).count();
-            return result;
-        }
-    }
+    private:
+        using Clock = std::chrono::steady_clock;
+        float& output_;
+        Clock::time_point start_;
+    };
 }
