@@ -24,12 +24,23 @@ namespace app {
     }
     void Application::BuildScene() {
         const auto plane = assets_.CreatePlane();
-        const auto wall = scene_.Add(plane);
-        scene_.Get(wall).SetTransform(math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({.5f, .5f, .5f}));
-        const auto floor = scene_.Add(plane);
-        scene_.Get(floor).SetTransform(math::CreateTranslation({0.f, -3.f, -5.f}) *
-                                       math::CreateRotation({1.f, 0.f, 0.f}, math::ToRadian(-90.f)) *
-                                       math::CreateScale({.5f, .5f, .5f}));
+        const auto wallTransform = math::CreateTranslation({0.f, 0.f, -15.f}) * math::CreateScale({.5f, .5f, .5f});
+        const auto floorTransform = math::CreateTranslation({0.f, -3.f, -5.f}) *
+                                    math::CreateRotation({1.f, 0.f, 0.f}, math::ToRadian(-90.f)) *
+                                    math::CreateScale({.5f, .5f, .5f});
+        if(options_.Backend == SceneBackend::Mir) {
+            mirScene_ = std::make_unique<scene::MirScene>();
+            const auto wall = mirScene_->Add(plane);
+            const auto floor = mirScene_->Add(plane);
+            if(!mirScene_->SetTransform(wall, wallTransform) || !mirScene_->SetTransform(floor, floorTransform))
+                throw std::runtime_error("MIR scene could not enqueue static transforms");
+        }
+        else {
+            const auto wall = scene_.Add(plane);
+            scene_.Get(wall).SetTransform(wallTransform);
+            const auto floor = scene_.Add(plane);
+            scene_.Get(floor).SetTransform(floorTransform);
+        }
         std::shared_ptr<const scene::Model> model;
         if(options_.Model == "diablo")
             model = assets_.LoadDiablo();
@@ -45,7 +56,29 @@ namespace app {
         }
         else
             throw std::invalid_argument("Model must be diablo, african, cube, or sphere");
-        animatedModel_ = scene_.Add(std::move(model));
+        // Keep one asset alive and make instance placement deterministic. This
+        // is the OOP control workload for a later ECS comparison.
+        const std::uint32_t columns = static_cast<std::uint32_t>(
+            std::ceil(std::sqrt(static_cast<float>(options_.Instances))));
+        const float spacing = modelScale_ * 2.75f;
+        const float halfWidth = static_cast<float>(columns - 1) * .5f;
+        const std::uint32_t rows = (options_.Instances + columns - 1) / columns;
+        const float halfHeight = static_cast<float>(rows - 1) * .5f;
+        animatedModels_.reserve(options_.Instances);
+        for(std::uint32_t index = 0; index < options_.Instances; ++index) {
+            const std::uint32_t column = index % columns, row = index / columns;
+            const math::Vector position{static_cast<float>(column) * spacing - halfWidth * spacing,
+                                        4.75f + static_cast<float>(row) * spacing - halfHeight * spacing, -5.f, 1.f};
+            AnimatedInstance instance;
+            instance.Position = position;
+            instance.Phase = static_cast<float>(index) * .017f;
+            if(mirScene_)
+                instance.MirHandle = mirScene_->Add(model);
+            else
+                instance.Handle = scene_.Add(model);
+            animatedModels_.push_back(instance);
+        }
+        if(mirScene_) mirScene_->Commit();
     }
     const graphics::FrameBuffer& Application::RenderFrame(float angle) {
         const auto width = state_.GetWidth(), height = state_.GetHeight();
@@ -56,9 +89,21 @@ namespace app {
         }
         camera_.LookAt({0.f, 4.f, state_.GetCameraDistance(), 1.f}, {0.f, 4.f, -5.f, 1.f});
         light_.SetDirection(state_.GetLightDirection());
-        scene_.Get(animatedModel_)
-            .SetTransform(math::CreateTranslation({0.f, 4.75f, -5.f}) * math::CreateRotation({0.f, 1.f, 0.f}, angle) *
-                          math::CreateScale({modelScale_, modelScale_, modelScale_}));
+        for(const auto& instance : animatedModels_) {
+            const auto transform = math::CreateTranslation(instance.Position) *
+                                   math::CreateRotation({0.f, 1.f, 0.f}, angle + instance.Phase) *
+                                   math::CreateScale({modelScale_, modelScale_, modelScale_});
+            if(mirScene_) {
+                if(!mirScene_->SetTransform(instance.MirHandle, transform))
+                    throw std::runtime_error("MIR scene could not enqueue an instance transform");
+            }
+            else
+                scene_.Get(instance.Handle).SetTransform(transform);
+        }
+        if(mirScene_) {
+            mirScene_->Commit();
+            return renderer_.Render(mirScene_->GetScene(), camera_, light_, state_.GetRenderSettings());
+        }
         return renderer_.Render(scene_, camera_, light_, state_.GetRenderSettings());
     }
     int Application::Run() {
@@ -93,6 +138,8 @@ namespace app {
                 const auto overBudget =
                     std::count_if(frameTimes.begin(), frameTimes.end(), [](float ms) { return ms > 1000.f / 60.f; });
                 std::cout << std::fixed << std::setprecision(3) << "Benchmark: model=" << options_.Model
+                          << " instances=" << options_.Instances
+                          << " backend=" << (options_.Backend == SceneBackend::Mir ? "mir" : "oop")
                           << " size=" << options_.Width << "x" << options_.Height << " workers=" << options_.Workers
                           << " distance=" << state_.GetCameraDistance() << " warmup=" << options_.WarmupFrames
                           << " frames=" << frames << '\n'

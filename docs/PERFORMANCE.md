@@ -63,6 +63,16 @@ ctest --preset release
 준비 구간은 통계에서 제외하며, 측정 시작 시 회전 각도를 0으로 되돌린다.
 기본값은 준비 30프레임·측정 300프레임이다. 한 프레임마다 회전 각도가 0.01 rad 증가한다.
 
+`--instances N`은 하나의 모델 자산을 공유하는 N개의 회전 인스턴스를 결정적인 격자로 배치한다.
+`--scene-backend oop|mir`로 OOP baseline과 MIR ECS command-buffer 갱신을 선택한다. `mir` 백엔드는 정적 벽·바닥을
+포함한 4098개 엔티티를 고정 예약하므로 최대 4096개 인스턴스에서도 같은 모델·배치·갱신 수를 유지한다.
+예를 들어 씬 순회와 transform 갱신이 픽셀 처리에 가려지는 정도는 다음처럼 확인한다.
+
+```powershell
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --frames 600 --warmup 60 --width 1280 --height 720 --workers 23
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --scene-backend mir --frames 600 --warmup 60 --width 1280 --height 720 --workers 23
+```
+
 출력은 scene 갱신과 CPU 렌더링을 합한 mean/p50/p95/p99/max, 평균 FPS, 16.667ms 초과 프레임 수를 포함한다.
 그림자·geometry·SSAO·AA의 평균 시간도 별도로 출력한다.
 파일 로딩, 이미지 저장, 창 표시, vsync는 이 CPU 측정에서 제외된다.

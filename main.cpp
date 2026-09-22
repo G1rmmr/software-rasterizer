@@ -7,6 +7,7 @@
 #include <string_view>
 
 namespace {
+    constexpr std::uint32_t MaxBenchmarkInstances = 4096;
     std::uint32_t Number(std::string_view text, const char* option, bool allowZero = false) {
         std::uint32_t value{};
         const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
@@ -21,6 +22,17 @@ namespace {
            value > 200.f)
             throw std::invalid_argument("--distance requires a number within 1..200");
         return value;
+    }
+    std::uint32_t InstanceCount(std::string_view text) {
+        const auto count = Number(text, "--instances");
+        if(count > MaxBenchmarkInstances)
+            throw std::invalid_argument("--instances requires a number within 1..4096");
+        return count;
+    }
+    app::SceneBackend Backend(std::string_view text) {
+        if(text == "oop") return app::SceneBackend::Oop;
+        if(text == "mir") return app::SceneBackend::Mir;
+        throw std::invalid_argument("--scene-backend requires oop or mir");
     }
 }
 int main(int argc, char** argv) {
@@ -48,6 +60,10 @@ int main(int argc, char** argv) {
                 options.Profiler = false;
             else if(arg == "--frames")
                 options.Frames = Number(value(), "--frames");
+            else if(arg == "--instances")
+                options.Instances = InstanceCount(value());
+            else if(arg == "--scene-backend")
+                options.Backend = Backend(value());
             else if(arg == "--width")
                 options.Width = Number(value(), "--width");
             else if(arg == "--height")
@@ -76,7 +92,8 @@ int main(int argc, char** argv) {
                 std::cout << "software-rasterizer [--headless|--benchmark] [--frames N] [--width N] [--height N]\n"
                              "  [--distance 1..200] (default: 45; smaller values zoom in)\n"
                              "  [--warmup N] (benchmark defaults: 30 warmup, 300 measured frames)\n"
-                             "  [--model diablo|african|cube|sphere] [--assets DIR] [--output FILE.bmp]\n"
+                             "  [--model diablo|african|cube|sphere] [--instances 1..4096] [--scene-backend oop|mir]\n"
+                             "  [--assets DIR] [--output FILE.bmp]\n"
                              "  [--workers N] [--no-shadows] [--no-ssao] [--no-aa] [--no-profiler]\n"
                              "  [--toon] [--wireframe|--points]\n"
                              "Controls: SPACE primitive, Q shadow, W SSAO, E AA, R toon, ESC quit.\n"

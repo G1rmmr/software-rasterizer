@@ -4,14 +4,19 @@
 #include "../Preferences.hpp"
 #include "../graphics/Renderer.hpp"
 #include "../resources/ModelFactory.hpp"
+#include "../scene/MirScene.hpp"
 #include "../scene/Scene.hpp"
 #include "ProfilerView.hpp"
 #include "Window.hpp"
 #include <filesystem>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace app {
+    enum class SceneBackend { Oop, Mir };
+
     struct Options {
         bool Headless = false;
         bool Benchmark = false;
@@ -20,6 +25,8 @@ namespace app {
         bool Profiler = true;
         std::uint32_t Width = config::Width, Height = config::Height;
         std::uint32_t Frames = 0; // Interactive: unlimited. Headless: one frame by default.
+        std::uint32_t Instances = 1;
+        SceneBackend Backend = SceneBackend::Oop;
         std::size_t Workers = ParallelExecutor::DefaultWorkerCount();
         std::filesystem::path Assets = "assets";
         std::filesystem::path Output;
@@ -39,7 +46,14 @@ namespace app {
         InputController input_;
         resources::ModelFactory assets_;
         scene::Scene scene_;
-        scene::Scene::Handle animatedModel_ = 0;
+        std::unique_ptr<scene::MirScene> mirScene_;
+        struct AnimatedInstance {
+            scene::Scene::Handle Handle = 0;
+            scene::MirScene::Handle MirHandle{};
+            math::Vector Position;
+            float Phase = 0.f;
+        };
+        std::vector<AnimatedInstance> animatedModels_;
         float modelScale_ = 8.f;
         graphics::Camera camera_;
         graphics::DirectionalLight light_;

@@ -114,6 +114,9 @@ Debug/Release, 해상도, 카메라 거리, 작업 스레드 수와 Q/W/E/R의 O
 ```
 
 `--model`은 `diablo`, `african`, `cube`, `sphere`를 지원합니다.
+`--instances N`은 동일 모델 자산을 공유하는 N개 인스턴스를 결정적인 격자로 배치하고 모두 회전시킵니다.
+`--scene-backend oop|mir`는 같은 렌더 장면을 기존 OOP 씬 또는 MIR ECS의 generation-safe entity/command buffer로 갱신합니다.
+기본값은 `oop`입니다. `mir`는 벽·바닥을 포함해 4098개 엔티티를 예약하므로 최대 4096개 인스턴스도 같은 장면으로 비교할 수 있습니다.
 `--workers 0`은 호출 스레드만 사용하며, 양수는 추가 작업 스레드 수입니다.
 `--no-shadows`, `--no-ssao`, `--no-aa`, `--wireframe`, `--points`로 각 경로를 확인할 수 있습니다.
 `--frames N`은 GUI에서도 N프레임 뒤 종료합니다. 출력은 32비트 BMP입니다.
@@ -124,14 +127,24 @@ Debug/Release, 해상도, 카메라 거리, 작업 스레드 수와 Q/W/E/R의 O
 
 ```powershell
 ./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --frames 600 --warmup 60
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --frames 600 --warmup 60
+./build/windows-msvc/bin/Release/software-rasterizer.exe --benchmark --model cube --instances 1024 --scene-backend mir --frames 600 --warmup 60
 ```
 
 기본 해상도와 그림자·SSAO·AA를 유지한 최적화 내용, 측정 결과, 실제 창 표시까지 확인하는 방법은
 [성능 측정 안내](docs/PERFORMANCE.md)에 정리했습니다.
 
+## 라이선스
+
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 포함된 ZET의 MIT 전문과 MIR의 현재
+라이선스 상태를 기록했습니다. 이 저장소 자체의 `LICENSE`는 아직 선택되지 않았습니다.
+MIR의 고정 커밋에는 재배포 권한을 부여하는 라이선스 파일이 없으므로, MIR을 포함한
+배포본을 오픈소스로 공개하기 전에는 MIR의 명시적 라이선스가 필요합니다.
+
 ## 검증 범위와 한계
 
-CTest의 9개 항목은 수학, 래스터라이저, 자산·씬, 후처리, 셰이더, 렌더러, 앱 상태, 프로파일러, headless 실행을 검사합니다.
+CTest의 12개 항목은 수학, 래스터라이저, 자산·씬, 후처리, 셰이더, 렌더러, 앱 상태, 프로파일러,
+MIR 씬 어댑터, OOP/MIR headless 실행을 검사합니다.
 그 안에서 동차 클리핑, 공유 모서리의 중복 합성, 원근 보간, reflection과 shear,
 잘못된 입력의 거부, 작업 예외, 홀수 해상도, 단일·병렬 실행 결과 일치 등을 확인합니다.
 테스트는 Release에서도 검사를 생략하지 않습니다.

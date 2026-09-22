@@ -12,6 +12,7 @@ namespace scene {
     class Scene {
     public:
         using Handle = std::size_t;
+        void Reserve(std::size_t count) { objects.reserve(count); }
         Handle Add(std::shared_ptr<const Model> model) {
             objects.emplace_back(std::move(model));
             return objects.size() - 1;

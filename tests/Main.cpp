@@ -10,6 +10,7 @@ void RunShaderTests();
 void RunRendererTests();
 void RunAppStateTests();
 void RunProfilerTests();
+void RunMirSceneTests();
 void WriteProfilerSnapshot(const char* path);
 
 int main(int argc, char** argv) {
@@ -20,7 +21,8 @@ int main(int argc, char** argv) {
     const std::array groups{Group{"math", RunMathTests},         Group{"rasterizer", RunRasterizerTests},
                             Group{"scene", RunSceneTests},       Group{"postprocess", RunPostProcessTests},
                             Group{"shader", RunShaderTests},     Group{"renderer", RunRendererTests},
-                            Group{"appstate", RunAppStateTests}, Group{"profiler", RunProfilerTests}};
+                            Group{"appstate", RunAppStateTests}, Group{"profiler", RunProfilerTests},
+                            Group{"mirscene", RunMirSceneTests}};
     bool found = false;
     for(const auto& group : groups) {
         if(argc > 1 && group.Name != argv[1]) continue;
